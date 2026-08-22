@@ -89,8 +89,11 @@ main { padding: 24px 22px 64px; max-width: 1400px; margin: 0 auto; }
 /**
  * CSS da tela de curso: árvore de módulos à esquerda, palco à direita.
  *
- * Abaixo de 900px a árvore vira uma faixa acima do palco em vez de coluna
- * lateral — não há espaço para as duas colunas num tablet em retrato.
+ * Abaixo de 900px as duas colunas empilham — não há espaço para elas lado a
+ * lado num tablet em retrato — mas o palco vem PRIMEIRO na ordem visual
+ * (`order`), com a árvore rolável abaixo. É o vídeo que a pessoa veio ver;
+ * fazer a lista de módulos aparecer primeiro obrigaria rolar por ela toda
+ * vez que trocasse de aula.
  */
 export const CSS_CURSO = `
 .curso { display: grid; grid-template-columns: 320px 1fr; gap: 0; height: calc(100vh - 55px); }
@@ -122,6 +125,11 @@ export const CSS_CURSO = `
 
 @media (max-width: 900px) {
   .curso { grid-template-columns: 1fr; height: auto; }
-  .arvore { border-right: 0; border-bottom: 1px solid var(--borda); max-height: 42vh; }
+
+  /* O vídeo primeiro: é o que a pessoa veio ver. Empilhar na ordem do DOM
+     faria ela aterrissar em 42vh de lista de módulos e ter de rolar para
+     achar o player — toda vez que trocasse de aula. */
+  .palco  { order: 1; }
+  .arvore { order: 2; border-right: 0; border-top: 1px solid var(--borda); max-height: none; }
 }
 `;
