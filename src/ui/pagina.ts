@@ -1,6 +1,7 @@
-import { CSS, CSS_CURSO } from "./tema.ts";
+import { CSS, CSS_CURSO, CSS_TRANSCRICAO } from "./tema.ts";
 import { HOME_JS } from "./home.ts";
 import { PLAYER_JS } from "./player.ts";
+import { TRANSCRICAO_JS } from "./transcricao.ts";
 import { CURSO_JS } from "./curso.ts";
 
 /**
@@ -16,13 +17,14 @@ export const PAGINA = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ensinantes Digitais</title>
-<style>${CSS}${CSS_CURSO}</style>
+<style>${CSS}${CSS_CURSO}${CSS_TRANSCRICAO}</style>
 </head>
 <body>
 <div id="app">carregando…</div>
 <script>
 ${HOME_JS}
 ${PLAYER_JS}
+${TRANSCRICAO_JS}
 ${CURSO_JS}
 const rota = () => location.pathname.startsWith('/curso/')
   ? pintarCurso(decodeURIComponent(location.pathname.slice('/curso/'.length)))

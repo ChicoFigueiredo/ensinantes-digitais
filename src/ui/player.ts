@@ -129,21 +129,6 @@ function pintarPalco() {
     });
   }
 
-  carregarTranscricao();
+  carregarTranscricao(item);
 }
-
-/**
- * A transcrição de verdade chega na Tarefa 12. Este no-op existe porque
- * \`pintarPalco\` já a chama, e um \`ReferenceError\` aqui deixa a tela de curso
- * em branco sem aviso nenhum no terminal.
- */
-function carregarTranscricao() {}
-
-/**
- * Idem: \`ontimeupdate\` já chama \`destacarTrecho\` para acompanhar a
- * transcrição durante a reprodução. Sem este no-op o vídeo continua tocando
- * (o erro fica isolado dentro do handler), mas a cada 5 s o console recebe um
- * \`ReferenceError\` gratuito. A Tarefa 12 substitui pela versão real.
- */
-function destacarTrecho() {}
 `;

@@ -133,3 +133,32 @@ export const CSS_CURSO = `
   .arvore { order: 2; border-right: 0; border-top: 1px solid var(--borda); max-height: none; }
 }
 `;
+
+/**
+ * CSS da transcrição clicável e da anotação por aula, embaixo do vídeo.
+ *
+ * Largura limitada a 760px: texto corrido esticado na tela toda (o palco pode
+ * ter mais de 1000px de largura livre) fica difícil de ler — colunas mais
+ * estreitas seguem melhor o olho de linha em linha.
+ */
+export const CSS_TRANSCRICAO = `
+.transc { padding: 8px 24px 40px; max-width: 760px; }
+.transc h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
+             color: var(--secundario); margin: 22px 0 10px; font-weight: 600; }
+.transc .trecho {
+  display: flex; gap: 12px; padding: 3px 0; cursor: pointer;
+  border-radius: 6px; align-items: baseline;
+}
+.transc .trecho:hover { background: var(--superficie); }
+.transc .trecho.ativo { color: var(--ambar); }
+.transc .trecho .t { color: var(--secundario); font-size: 12px; flex: none; width: 52px; }
+.transc .trecho.ativo .t { color: var(--ambar); }
+
+.nota textarea {
+  width: 100%; min-height: 110px; resize: vertical;
+  background: var(--superficie); color: var(--texto);
+  border: 1px solid var(--borda); border-radius: 10px; padding: 12px;
+  font: inherit; line-height: 1.5;
+}
+.nota textarea:focus { outline: none; border-color: var(--ambar); }
+`;
