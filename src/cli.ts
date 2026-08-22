@@ -103,26 +103,25 @@ async function comandoRecortes() {
   const db = await abrirBanco();
   const caminhoRecortes = "./recortes.ts";
   const { gerar } = await importarModulo(caminhoRecortes);
-  await gerar(db);
+  const r = await gerar(db);
+  console.log(`${r.total} pastas · ${(r.bytes / 1073741824).toFixed(2)} GB`);
+  console.log(`  ${r.relatorio}\n  ${r.script}  (não executado)`);
 }
 
 async function comandoStatus() {
   const db = await abrirBanco();
-  const catalogo = db
-    .query(
-      `SELECT c.nome AS curso, COUNT(i.id) AS itens
-       FROM cursos c LEFT JOIN itens i ON i.curso_id = c.id
-       GROUP BY c.id ORDER BY c.nome`,
-    )
-    .all();
+  // Esquema definido em src/db.ts (Tarefa 3): itens não tem curso_id — a
+  // ligação com o curso passa por modulos (itens.modulo_id → modulos.id →
+  // modulos.curso_id → cursos.id), e a coluna de nome do curso é `titulo`.
+  const catalogo = db.query(`
+    SELECT c.titulo, c.estado, COUNT(DISTINCT m.id) modulos, COUNT(i.id) itens
+      FROM cursos c LEFT JOIN modulos m ON m.curso_id = c.id
+                    LEFT JOIN itens i ON i.modulo_id = m.id
+     GROUP BY c.id ORDER BY c.posicao`).all();
   console.table(catalogo);
 
-  const fila = db
-    .query(
-      `SELECT transcricao_estado AS estado, COUNT(*) AS total
-       FROM itens WHERE tipo='video' GROUP BY transcricao_estado`,
-    )
-    .all();
+  const fila = db.query(
+    "SELECT transcricao_estado estado, COUNT(*) n FROM itens WHERE tipo='video' GROUP BY 1").all();
   console.table(fila);
 }
 
