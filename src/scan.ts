@@ -95,17 +95,31 @@ function contarRecorte(entradas: Dirent[]): number {
  *
  * Devolve um mapa de caminho absoluto → bytes. Pasta ausente do mapa é pasta
  * que o `find` não conseguiu ler — quem chama decide o que fazer.
+ *
+ * `bin` só existe para o teste: `Bun.spawnSync` LANÇA quando o binário não
+ * está no PATH (não devolve um `exitCode` não-zero), e num `const`/`let`
+ * exportado o teste não consegue trocar o binário de fora do módulo — ESM
+ * não deixa reatribuir um binding importado. Um parâmetro com valor padrão
+ * "find" resolve isso sem mudar nada para quem chama sem o segundo argumento.
  */
-export function medirRecortes(pastasAbsolutas: string[]): Map<string, number> {
+export function medirRecortes(pastasAbsolutas: string[], bin = "find"): Map<string, number> {
   const medido = new Map<string, number>();
   if (!pastasAbsolutas.length) return medido;
 
-  const p = Bun.spawnSync([
-    "find", ...pastasAbsolutas, "-maxdepth", "1", "-type", "f", "-printf", "%h\\t%s\\n",
-  ]);
-  if (p.exitCode !== 0) return medido;   // sem `find`: quem chama fica com 0
+  let saida: string;
+  try {
+    const p = Bun.spawnSync([
+      bin, ...pastasAbsolutas, "-maxdepth", "1", "-type", "f", "-printf", "%h\\t%s\\n",
+    ]);
+    // Dois modos de falha diferentes: o `find` rodar e falhar (caminho inválido,
+    // permissão) cai aqui; o `find` NÃO EXISTIR lança, e cai no catch.
+    if (p.exitCode !== 0) return medido;
+    saida = new TextDecoder().decode(p.stdout);
+  } catch {
+    return medido;   // sem `find` no PATH: bytes ficam em 0, a varredura segue
+  }
 
-  for (const linha of new TextDecoder().decode(p.stdout).split("\n")) {
+  for (const linha of saida.split("\n")) {
     if (!linha) continue;
     const [dir, tamanho] = linha.split("\t");
     if (!dir || !tamanho) continue;

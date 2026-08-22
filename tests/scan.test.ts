@@ -124,6 +124,21 @@ test("medirRecortes soma os bytes de várias pastas numa chamada só", () => {
   expect(m.get(b)).toBe(3 * "png".length); // 3 arquivos de 3 bytes
 });
 
-test("medirRecortes com lista vazia não chama nada e devolve mapa vazio", () => {
-  expect(medirRecortes([]).size).toBe(0);
+test("medirRecortes com lista vazia retorna antes de chamar o find", () => {
+  const inicio = performance.now();
+  const m = medirRecortes([]);
+  // Sem o early-return, o `find` rodaria sem caminho — varrendo o cwd inteiro.
+  // Qualquer coisa acima de poucos milissegundos significa que ele foi chamado.
+  expect(performance.now() - inicio).toBeLessThan(50);
+  expect(m.size).toBe(0);
+});
+
+test("medirRecortes devolve mapa vazio em vez de estourar quando o find não existe", () => {
+  // Bun.spawnSync LANÇA quando o binário não está no PATH — não devolve
+  // exitCode. Sem o try/catch, um binário ausente derrubaria o scan inteiro.
+  // Esvaziar o PATH não reproduz isso nesta máquina (o Bun resolve e o `find`
+  // falha com exitCode 1, não com exceção); por isso o nome do binário é
+  // injetado por parâmetro, e o teste usa um nome que garantidamente não existe.
+  const m = medirRecortes(["/tmp"], "binario-que-definitivamente-nao-existe-aqui-9x7z");
+  expect(m.size).toBe(0);
 });
