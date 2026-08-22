@@ -78,6 +78,16 @@ async function comandoScan() {
   console.log(
     `cursos: ${resultado.cursos}, itens: ${resultado.itens}, recortes: ${resultado.recortes}`,
   );
+
+  // O scan é a única fonte dos `ignorados` — por isso é aqui, e não em
+  // `comandoRecortes`, que os dois relatórios de recorte/fora-do-catálogo
+  // são gerados juntos.
+  const caminhoRecortes = "./recortes.ts";
+  const { gerarRecortes, gerarForaDoCatalogo } = await importarModulo(caminhoRecortes);
+  const r = gerarRecortes(db);
+  const f = gerarForaDoCatalogo(resultado.ignorados);
+  console.log(`recortes: ${r.total} pastas · ${(r.bytes / 1073741824).toFixed(2)} GB`);
+  console.log(`fora do catálogo: ${f.total} itens`);
 }
 
 async function comandoPainel() {
@@ -111,8 +121,10 @@ async function comandoRequeue() {
 async function comandoRecortes() {
   const db = await abrirBanco();
   const caminhoRecortes = "./recortes.ts";
-  const { gerar } = await importarModulo(caminhoRecortes);
-  const r = await gerar(db);
+  // Só o relatório de recortes: `fora-do-catalogo.md` depende dos `ignorados`
+  // do scan e fica intacto aqui — refazê-lo exigiria varrer o disco de novo.
+  const { gerarRecortes } = await importarModulo(caminhoRecortes);
+  const r = gerarRecortes(db);
   console.log(`${r.total} pastas · ${(r.bytes / 1073741824).toFixed(2)} GB`);
   console.log(`  ${r.relatorio}\n  ${r.script}  (não executado)`);
 }
