@@ -69,6 +69,11 @@ function pintarPalco() {
 
   if (!atual) { palco.innerHTML = '<div class="cabeca"><h2>Módulo sem material</h2></div>'; return; }
 
+  // Markdown de Repo/ tem palco próprio (materiais.ts): sem vídeo, sem
+  // velocidade, sem transcrição. Sai daqui antes de qualquer coisa que
+  // pressuponha <video>.
+  if (atual.tipo === 'markdown') { pintarMarkdown(); return; }
+
   // Capturado aqui, e não lido de \`atual\` dentro dos handlers: \`atual\` muda
   // assim que a pessoa clica em outra aula, e um handler que ainda esteja vivo
   // gravaria o tempo DESTE vídeo na chave da aula NOVA.

@@ -1,19 +1,34 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { conectar } from "../src/db.ts";
-import { LIMIAR_PALAVRAS, LIMIAR_SIMILARIDADE } from "../src/config.ts";
+import { ACERVO, LIMIAR_PALAVRAS, LIMIAR_SIMILARIDADE } from "../src/config.ts";
 import { ehDivergente, montarResposta, type Comparacao } from "../src/painel.ts";
 
 let db: Database;
 
+// Pasta real dentro do acervo, no mesmo padrão de tests/arquivos.test.ts:
+// `dentroDoAcervo` resolve contra o ACERVO de verdade, então um `rel_path`
+// de teste só passa pela checagem se o arquivo existir ali.
+const PASTA_MD = join(ACERVO, "__teste-painel-materiais");
+const MD_REL = "__teste-painel-materiais/nota.md";
+
 beforeAll(() => {
+  mkdirSync(PASTA_MD, { recursive: true });
+  writeFileSync(join(PASTA_MD, "nota.md"), "# Nota\n\numa linha com `<nome>` em código.");
+
   db = conectar(":memory:");
   db.run(`INSERT INTO cursos (slug,pasta,posicao,titulo,estado) VALUES ('c1','1-Curso',0,'Curso Um','completo')`);
   db.run(`INSERT INTO modulos (curso_id,codigo,pasta,titulo,posicao) VALUES (1,'01','01-Mod','Módulo Um',0)`);
   db.run(`INSERT INTO itens (modulo_id,tipo,codigo,titulo,rel_path,posicao,bytes,duracao,srt_path,transcricao_estado)
           VALUES (1,'video','01.01','Aula Um','1-Curso/01-Mod/01.01-Aula Um.mp4',0,1000,600,'1-Curso/01-Mod/01.01-Aula Um.srt','pronto')`);
+  db.run(`INSERT INTO itens (modulo_id,tipo,codigo,titulo,rel_path,posicao,bytes)
+          VALUES (1,'markdown','01.02','Nota Um','${MD_REL}',1,50)`);
 });
+
+afterAll(() => rmSync(PASTA_MD, { recursive: true, force: true }));
 
 const pedir = (rota: string, usuario?: string, init: RequestInit = {}) =>
   montarResposta(db, new Request(`http://x${rota}`, {
@@ -93,6 +108,52 @@ test("o progresso que vem em /api/tudo é o do usuário que pediu", async () => 
 
 test("rota desconhecida devolve 404", async () => {
   expect((await pedir("/api/inexistente")).status).toBe(404);
+});
+
+// --- /api/markdown (Tarefa 19) -------------------------------------------
+// Materiais é conteúdo de curso: os DOIS usuários veem — ao contrário de
+// /api/tudo, aqui não há campo para esconder do procópio, porque a resposta
+// só tem `titulo` e `html`.
+
+test("/api/markdown devolve título e html renderizado", async () => {
+  const j = await (await pedir("/api/markdown?id=2")).json();
+  expect(j.titulo).toBe("Nota Um");
+  expect(j.html).toContain("<h1>Nota</h1>");
+  // O caso real do acervo (README.md, linha 80): texto entre < e > aparece
+  // escapado, nunca como tag interpretada.
+  expect(j.html).toContain("&lt;nome&gt;");
+  expect(j.html).not.toContain("<nome>");
+});
+
+test("/api/markdown funciona igual para o procópio — materiais é dos dois", async () => {
+  const j = await (await pedir("/api/markdown?id=2", "procopio")).json();
+  expect(j.titulo).toBe("Nota Um");
+  expect(j.html).toContain("<h1>Nota</h1>");
+});
+
+test("/api/markdown não vaza caminho de disco na resposta a ninguém", async () => {
+  for (const usuario of [undefined, "procopio"] as const) {
+    const bruto = await (await pedir("/api/markdown?id=2", usuario)).text();
+    expect([usuario, bruto.includes("__teste-painel-materiais")]).toEqual([usuario, false]);
+    expect([usuario, bruto.includes("bytes")]).toEqual([usuario, false]);
+  }
+});
+
+test("/api/markdown com id inexistente devolve 404", async () => {
+  expect((await pedir("/api/markdown?id=999999")).status).toBe(404);
+});
+
+test("/api/markdown sem id devolve 404", async () => {
+  expect((await pedir("/api/markdown")).status).toBe(404);
+});
+
+test("/api/markdown de um item fora do acervo devolve 400, não estoura", async () => {
+  db.run(`INSERT INTO itens (modulo_id,tipo,codigo,titulo,rel_path,posicao,bytes)
+          VALUES (1,'markdown','01.03','Fora','../../etc/passwd',2,10)`);
+  const id = db.query<{ id: number }, []>(
+    "SELECT id FROM itens WHERE rel_path = '../../etc/passwd'").get()!.id;
+  const r = await pedir(`/api/markdown?id=${id}`);
+  expect(r.status).toBe(400);
 });
 
 // Os dois testes abaixo cobrem o ponto crítico desta tarefa: `ehRotaAdmin`

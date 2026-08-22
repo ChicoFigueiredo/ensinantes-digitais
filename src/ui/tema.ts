@@ -193,3 +193,35 @@ table.divs th { text-align: left; color: var(--secundario); font-weight: 600;
 table.divs td { padding: 8px 10px; border-bottom: 1px solid var(--borda); }
 table.divs td.num, table.divs th:not(:first-child) { text-align: right; }
 `;
+
+/**
+ * CSS do markdown renderizado (Tarefa 19), para o palco quando o item é
+ * `Repo/*.md`.
+ *
+ * `1351` das linhas medidas nos nove arquivos reais são de tabela — de longe
+ * o construto dominante — por isso ela é quem ganha tratamento especial:
+ * `display: block; overflow-x: auto` deixa uma tabela larga rolar sozinha em
+ * vez de esticar a página inteira (Mapa.Completo.md tem colunas de sobra
+ * para isso acontecer).
+ */
+export const CSS_MARKDOWN = `
+.md { padding: 4px 24px 60px; max-width: 760px; line-height: 1.7; }
+.md h1, .md h2, .md h3 { margin: 28px 0 10px; line-height: 1.3; }
+.md h1 { font-size: 24px; } .md h2 { font-size: 20px; } .md h3 { font-size: 17px; }
+.md p { margin: 0 0 14px; }
+.md ul, .md ol { margin: 0 0 14px; padding-left: 22px; }
+.md li { margin: 4px 0; }
+.md a { color: var(--ambar); border-bottom: 1px solid transparent; }
+.md a:hover { border-bottom-color: var(--ambar); }
+.md code { background: var(--elevada); padding: 1px 5px; border-radius: 5px; font-size: 13px; }
+.md pre { background: var(--superficie); border: 1px solid var(--borda);
+          border-radius: 10px; padding: 14px; overflow-x: auto; }
+.md pre code { background: none; padding: 0; }
+.md blockquote { margin: 0 0 14px; padding: 2px 0 2px 16px;
+                 border-left: 3px solid var(--borda); color: var(--secundario); }
+/* Tabela larga rola sozinha em vez de esticar a página inteira. */
+.md table { width: 100%; border-collapse: collapse; margin: 0 0 18px;
+            display: block; overflow-x: auto; }
+.md th, .md td { padding: 7px 10px; border-bottom: 1px solid var(--borda); text-align: left; }
+.md th { color: var(--secundario); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+`;

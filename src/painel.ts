@@ -25,6 +25,7 @@ import {
 } from "./db.ts";
 import { dentroDoAcervo, servirArquivo } from "./arquivos.ts";
 import { lerTrechos, srtParaVtt } from "./legenda.ts";
+import { paraHtml } from "./markdown.ts";
 import { gerarRecortes } from "./recortes.ts";
 import { abrirNoSistema, revelar } from "./revelar.ts";
 import { disparar, estadoTarefas } from "./tarefas.ts";
@@ -266,6 +267,18 @@ export async function montarResposta(db: Database, req: Request): Promise<Respon
     const srt = await lerSrtDoItem(item.srt_path);
     if (srt === null) return Response.json({ trechos: [] });
     return Response.json({ titulo: item.titulo, trechos: lerTrechos(srt) });
+  }
+
+  // Materiais (`Repo/`) é conteúdo de curso: os dois usuários veem. A
+  // resposta só tem `titulo` e `html` — nada de `rel_path`, `bytes` nem
+  // estado de fila entra aqui, então não há campo para esconder do
+  // procópio, ao contrário de `/api/tudo`.
+  if (rota === "/api/markdown") {
+    const item = itemPedido(db, url);
+    if (!item) return new Response("não encontrado", { status: 404 });
+    const alvo = dentroDoAcervo(item.rel_path);
+    if (!alvo) return new Response("fora do acervo", { status: 400 });
+    return Response.json({ titulo: item.titulo, html: paraHtml(await Bun.file(alvo).text()) });
   }
 
   // Daqui para baixo, só o chico chega: `ehRotaAdmin` já barrou o resto lá em
