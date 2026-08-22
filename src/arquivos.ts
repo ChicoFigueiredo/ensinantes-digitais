@@ -50,19 +50,28 @@ export function servirArquivo(relPath: string, req: Request): Response {
   const alvo = dentroDoAcervo(relPath);
   if (!alvo || !existsSync(alvo)) return new Response("não encontrado", { status: 404 });
 
-  const tamanho = statSync(alvo).size;
+  const info = statSync(alvo);
+  // Diretório não é conteúdo. Sem esta checagem, `relPath` vazio resolve para a
+  // raiz do acervo, e a Response sai com 200 — estourando só quando o corpo é
+  // lido, com a transmissão para o cliente já começada.
+  if (!info.isFile()) return new Response("não encontrado", { status: 404 });
+
+  const tamanho = info.size;
   const tipo = mime(alvo);
   const range = req.headers.get("range");
 
-  if (!range) {
+  const m = /bytes=(\d*)-(\d*)/.exec(range ?? "");
+  // Cabeçalho presente mas ilegível é tratado como ausente: 200 com o arquivo
+  // inteiro. Responder 206 a um pedido que não delimitou pedaço nenhum mente
+  // sobre o que a resposta é.
+  if (!range || !m || (!m[1] && !m[2])) {
     return new Response(Bun.file(alvo), {
       headers: { "Content-Type": tipo, "Content-Length": String(tamanho), "Accept-Ranges": "bytes" },
     });
   }
 
-  const m = /bytes=(\d*)-(\d*)/.exec(range);
-  const inicio = m?.[1] ? Number(m[1]) : 0;
-  const fim = m?.[2] ? Number(m[2]) : tamanho - 1;
+  const inicio = m[1] ? Number(m[1]) : 0;
+  const fim = m[2] ? Number(m[2]) : tamanho - 1;
   if (inicio >= tamanho || fim >= tamanho || inicio > fim) {
     return new Response("range inválido", {
       status: 416, headers: { "Content-Range": `bytes */${tamanho}` },

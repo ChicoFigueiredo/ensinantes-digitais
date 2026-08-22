@@ -56,3 +56,25 @@ test("Range além do arquivo devolve 416", () => {
 test("arquivo inexistente devolve 404", () => {
   expect(servirArquivo("__teste-arquivos/nao-existe.mp4", new Request("http://x/")).status).toBe(404);
 });
+
+test("caminho vazio não serve o diretório do acervo", async () => {
+  const r = servirArquivo("", new Request("http://x/"));
+  expect(r.status).toBe(404);
+  // O status por si não basta: sem a checagem de isFile o corpo é que estoura,
+  // e só na hora de transmitir. Consumir aqui prova que a resposta é sólida.
+  expect(await r.text()).toBe("não encontrado");
+});
+
+test("diretório não é servido como arquivo", async () => {
+  const r = servirArquivo("1-Ensinantes", new Request("http://x/"));
+  expect(r.status).toBe(404);
+  expect(await r.text()).toBe("não encontrado");
+});
+
+test("Range ilegível é tratado como ausente, não como parcial", async () => {
+  for (const bruto of ["bytes=abc", "bytes=-", "coisas=1-2", "lixo"]) {
+    const r = servirArquivo(REL, new Request("http://x/", { headers: { range: bruto } }));
+    expect([bruto, r.status]).toEqual([bruto, 200]);
+    expect(await r.text()).toBe("0123456789");
+  }
+});
