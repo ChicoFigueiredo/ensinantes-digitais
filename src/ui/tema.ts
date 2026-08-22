@@ -206,9 +206,11 @@ table.divs td.num, table.divs th:not(:first-child) { text-align: right; }
  */
 export const CSS_MARKDOWN = `
 .md { padding: 4px 24px 60px; max-width: 760px; line-height: 1.7; }
-.md h1, .md h2, .md h3 { margin: 28px 0 10px; line-height: 1.3; }
+.md h1, .md h2, .md h3, .md h4 { margin: 28px 0 10px; line-height: 1.3; }
 .md h1 { font-size: 24px; } .md h2 { font-size: 20px; } .md h3 { font-size: 17px; }
+.md h4 { font-size: 15px; color: var(--secundario); }
 .md p { margin: 0 0 14px; }
+.md hr { border: 0; border-top: 1px solid var(--borda); margin: 26px 0; }
 .md ul, .md ol { margin: 0 0 14px; padding-left: 22px; }
 .md li { margin: 4px 0; }
 .md a { color: var(--ambar); border-bottom: 1px solid transparent; }

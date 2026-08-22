@@ -26,3 +26,12 @@ test("o plural não erra no singular", () => {
   // "1 módulos" apareceu no cartão Materiais, que tem exatamente um.
   expect(PAGINA).toContain("n === 1 ? singular : plural");
 });
+
+// Os nove arquivos de `Repo/` trazem 105 réguas horizontais e 16 títulos de
+// nível 4. Sem regra própria o navegador desenha o <hr> com bisel 3D claro,
+// fora da paleta — e é o construto que mais aparece depois de tabela e lista.
+test("markdown: régua e título de nível 4 saem na paleta, não no padrão do navegador", () => {
+  expect(PAGINA).toContain(".md hr { border: 0; border-top: 1px solid var(--borda)");
+  expect(PAGINA).toContain(".md h4 {");
+  expect(PAGINA).toContain(".md h1, .md h2, .md h3, .md h4 {");
+});

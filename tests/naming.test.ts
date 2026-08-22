@@ -108,3 +108,14 @@ test("ordenação é numérica, não alfabética: 10 vem depois de 2", () => {
   ];
   expect(ordenarPorCodigo(entrada).map((x) => x.titulo)).toEqual(["dois", "dez"]);
 });
+
+// Dois arquivos reais do acervo perdiam o número: `AJUSTES_V3.0.2.md` virava
+// "AJUSTES_V3 0 2" e `Lei.Direitos.Autorais.9.610.pdf` virava "…Autorais 9 610".
+// Ponto entre dígitos é número, não separador.
+test("ponto entre dígitos sobrevive; os outros continuam virando espaço", () => {
+  expect(lerItem("AJUSTES_V3.0.2.md").titulo).toBe("AJUSTES_V3.0.2");
+  expect(lerItem("Lei.Direitos.Autorais.9.610.pdf").titulo).toBe("Lei Direitos Autorais 9.610");
+  expect(lerItem("Mapa.Completo.md").titulo).toBe("Mapa Completo");
+  expect(lerItem("Modulo.3.Aula.4.pdf").titulo).toBe("Modulo 3 Aula 4");
+  expect(lerModulo("01.A.Jornada.do.Heroi")).toEqual({ codigo: "01", titulo: "A Jornada do Heroi" });
+});

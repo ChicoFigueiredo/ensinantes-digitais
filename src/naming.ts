@@ -53,7 +53,11 @@ const COM_PONTO = /^(B?\d+)\./;
  */
 function humanizar(texto: string): string {
   const semMais = texto.replace(/\+/g, " ");
-  const t = /\s/.test(texto) ? semMais : semMais.replace(/\./g, " ");
+  // Ponto ENTRE DÍGITOS é número, não separador: `AJUSTES_V3.0.2` e
+  // `Lei.Direitos.Autorais.9.610` viravam "AJUSTES_V3 0 2" e "…Autorais 9 610".
+  // O `(?<!\d)` / `(?!\d)` deixa esses dois pontos em paz e continua abrindo
+  // todos os outros.
+  const t = /\s/.test(texto) ? semMais : semMais.replace(/(?<!\d)\.|\.(?!\d)/g, " ");
   return t.replace(/\s+/g, " ").trim();
 }
 
