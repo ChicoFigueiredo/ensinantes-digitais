@@ -1,0 +1,22 @@
+{
+  "name": "ensinantes-digitais",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Painel de estudo dos três cursos do combo Ensinantes Digitais.",
+  "type": "module",
+  "scripts": {
+    "scan": "bun run src/cli.ts scan",
+    "painel": "bun run src/cli.ts painel",
+    "transcrever": "bun run src/cli.ts transcrever",
+    "recortes": "bun run src/cli.ts recortes",
+    "status": "bun run src/cli.ts status",
+    "worker": "uv run python -m ensinantes.worker",
+    "setup": "bun install && uv sync",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}
