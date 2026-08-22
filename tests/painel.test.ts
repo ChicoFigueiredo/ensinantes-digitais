@@ -125,6 +125,21 @@ test("/api/markdown devolve título e html renderizado", async () => {
   expect(j.html).not.toContain("<nome>");
 });
 
+// O `id` da URL escolhe QUAL linha, não decide o que ela é. Sem conferir o
+// tipo, `?id=` de um vídeo fazia a rota ler o .mp4 inteiro como texto e
+// devolvê-lo como JSON — medido no acervo real: um vídeo de 2,5 MB virou 6,6
+// MB de resposta, e há um de 541 MB. De graça, e para o convidado também.
+test("/api/markdown recusa item que não é markdown, em vez de ler o vídeo como texto", async () => {
+  const r = await pedir("/api/markdown?id=1");   // id 1 é o vídeo da fixture
+  expect(r.status).toBe(400);
+  const corpo = await r.text();
+  expect(corpo).not.toContain("html");
+});
+
+test("/api/markdown recusa vídeo também para o convidado", async () => {
+  expect((await pedir("/api/markdown?id=1", "procopio")).status).toBe(400);
+});
+
 test("/api/markdown funciona igual para o procópio — materiais é dos dois", async () => {
   const j = await (await pedir("/api/markdown?id=2", "procopio")).json();
   expect(j.titulo).toBe("Nota Um");

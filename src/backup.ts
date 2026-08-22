@@ -36,15 +36,21 @@ export interface Sincronizado {
   erro?: string;
 }
 
-export function sincronizarCopia(db: Database): Sincronizado {
+/**
+ * `destino` existe pelo mesmo motivo que em `gerarRecortes`: sem ele, um teste
+ * que chame esta função sobrescreve a CÓPIA DE SEGURANÇA REAL dentro do
+ * acervo com o banco de fixture. Medido: `bun test` derrubava a cópia de 281
+ * itens para 0. O padrão continua sendo o de produção.
+ */
+export function sincronizarCopia(db: Database, destino: string = COPIA_PATH): Sincronizado {
   const inicio = Date.now();
-  const tmp = `${COPIA_PATH}.tmp`;
+  const tmp = `${destino}.tmp`;
   try {
     // VACUUM INTO recusa escrever num arquivo que já existe.
     if (existsSync(tmp)) unlinkSync(tmp);
     db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
-    renameSync(tmp, COPIA_PATH);
-    return { ok: true, bytes: statSync(COPIA_PATH).size, ms: Date.now() - inicio, caminho: COPIA_PATH };
+    renameSync(tmp, destino);
+    return { ok: true, bytes: statSync(destino).size, ms: Date.now() - inicio, caminho: destino };
   } catch (e) {
     const erro = String(e).slice(0, 300);
     // `log` não existe neste projeto — a função equivalente em `db.ts` é
@@ -59,6 +65,6 @@ export function sincronizarCopia(db: Database): Sincronizado {
     try {
       registrar(db, "erro", "sync", `cópia do banco falhou: ${erro}`);
     } catch { /* banco indisponível: o retorno abaixo é o que sobra para contar */ }
-    return { ok: false, bytes: 0, ms: Date.now() - inicio, caminho: COPIA_PATH, erro };
+    return { ok: false, bytes: 0, ms: Date.now() - inicio, caminho: destino, erro };
   }
 }

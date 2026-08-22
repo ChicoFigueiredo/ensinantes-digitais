@@ -143,8 +143,8 @@ export function ehDivergente(comparacao: Comparacao): boolean {
 }
 
 function itemPorId(db: Database, id: number) {
-  return db.query<{ rel_path: string; srt_path: string | null; titulo: string }, [number]>(
-    "SELECT rel_path, srt_path, titulo FROM itens WHERE id = ?").get(id);
+  return db.query<{ rel_path: string; srt_path: string | null; titulo: string; tipo: string }, [number]>(
+    "SELECT rel_path, srt_path, titulo, tipo FROM itens WHERE id = ?").get(id);
 }
 
 /**
@@ -277,6 +277,12 @@ export async function montarResposta(db: Database, req: Request): Promise<Respon
   if (rota === "/api/markdown") {
     const item = itemPedido(db, url);
     if (!item) return new Response("não encontrado", { status: 404 });
+    // O `id` vem da URL, então ele decide QUAL linha do banco, mas não decide
+    // o que aquela linha é. Sem esta conferência, `?id=` de um vídeo fazia a
+    // rota ler o .mp4 inteiro como texto e devolver como JSON: um vídeo de
+    // 2,5 MB virou 6,6 MB de resposta, e o de 541 MB derruba o painel — de
+    // graça, e para o convidado também, que tem acesso a esta rota.
+    if (item.tipo !== "markdown") return new Response("não é material de texto", { status: 400 });
     const alvo = dentroDoAcervo(item.rel_path);
     if (!alvo) return new Response("fora do acervo", { status: 400 });
     return Response.json({ titulo: item.titulo, html: paraHtml(await Bun.file(alvo).text()) });
