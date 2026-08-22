@@ -1,5 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { conectar } from "../src/db.ts";
@@ -45,6 +46,25 @@ test("caminho com aspas não escapa do comando", () => {
     [{ relPath: 'x/a"b', arquivos: 1, bytes: 1, aula: null }], "/raiz");
   expect(sh).not.toMatch(/rm -rf "\/raiz\/x\/a"b"/);
   expect(sh).toContain('a\\"b');
+});
+
+test("o script usa o caminho real, não o do symlink", () => {
+  const sh = script(AMOSTRA, "/mnt/e/Marketing/Ensinantes.Digitais");
+  expect(sh).toContain('rm -rf "/mnt/e/Marketing/Ensinantes.Digitais/');
+  // Um `rm -rf` que atravessa symlink apaga o mesmo conteúdo, mas o alvo passa
+  // a depender de o symlink não ter sido repontado desde a geração.
+  expect(sh).not.toContain("/acervo/");
+});
+
+test("o script gerado é bash sintaticamente válido", async () => {
+  const caminho = join(tmpdir(), `apagar-teste-${process.pid}.sh`);
+  writeFileSync(caminho, script(AMOSTRA, "/raiz"), "utf-8");
+  // `bash -n` analisa sem executar. Nomes do acervo têm espaço, parêntese e
+  // aspas tipográficas — um escape errado vira erro de sintaxe aqui, e não um
+  // `rm -rf` no alvo errado lá.
+  const p = Bun.spawnSync(["bash", "-n", caminho]);
+  rmSync(caminho, { force: true });
+  expect(p.exitCode).toBe(0);
 });
 
 test("gerarRecortes lê a tabela recortes e escreve os dois arquivos", () => {

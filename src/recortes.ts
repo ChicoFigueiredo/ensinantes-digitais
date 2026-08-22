@@ -13,7 +13,7 @@
  * restos de organização): não tem script, porque não é para apagar, é para
  * o Chico ver que aquilo existe.
  */
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Database } from "bun:sqlite";
 
@@ -103,7 +103,16 @@ export function gerarRecortes(db: Database):
   const md = join(RELATORIOS, "recortes.md");
   const sh = join(SCRIPTS, "apagar-recortes.sh");
   writeFileSync(md, relatorio(linhas), "utf-8");
-  writeFileSync(sh, script(linhas, ACERVO), { encoding: "utf-8", mode: 0o755 });
+
+  // O caminho real, não o do symlink `acervo`. Este arquivo é guardado e
+  // rodado depois — possivelmente muito depois — e um `rm -rf` de 127 GB não
+  // pode depender de um symlink continuar apontando para onde apontava hoje.
+  // Serve também para quem lê a lista antes de rodar reconhecer o disco de
+  // verdade. Se o acervo estiver desmontado, `realpathSync` lança — e é
+  // melhor falhar aqui do que gerar um script apontando para um caminho que
+  // ninguém conseguiu resolver.
+  const raiz = realpathSync(ACERVO);
+  writeFileSync(sh, script(linhas, raiz), { encoding: "utf-8", mode: 0o755 });
 
   return {
     relatorio: md, script: sh,
@@ -158,7 +167,22 @@ const GRUPOS: { motivo: Motivo; titulo: string; explicacao: string }[] = [
   },
 ];
 
-/** Deduz o motivo pelo caminho. Ver `PASTAS_IGNORADAS`, `ehPessoal` e `ehLixoDeOrganizacao`. */
+/**
+ * Deduz o motivo pelo caminho. Ver `PASTAS_IGNORADAS`, `ehPessoal` e
+ * `ehLixoDeOrganizacao`.
+ *
+ * Hoje, no acervo real, os grupos "Backup de transcrição" e "Restos de
+ * organização" saem vazios — e isso não é bug:
+ *
+ *   - `_transcricoes.antigas/` só passa a existir depois que o worker
+ *     retranscreve um vídeo pela primeira vez (Tarefa 14). Antes disso não
+ *     há nada para listar.
+ *   - `gera_pastas.sh`, `Lista.txt` e `_l.txt` existem no disco, mas `.sh`,
+ *     `.txt` não são extensão reconhecida por `tipoDe` (`scan.ts`) — o
+ *     arquivo nunca vira `ItemBruto` e por isso nunca chega a `ignorados`.
+ *     É limitação herdada da Tarefa 4, já registrada; não alargamos
+ *     `tipoDe` só para poder listar sobra de organização que não é material.
+ */
 function motivoDe(relPath: string): Motivo {
   const nome = basename(relPath);
   if (nome === "_antigo") return "_antigo";
