@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from ensinantes import config
-from ensinantes.transcriber import escrever_saidas, guardar_antigas, hms
+from ensinantes.transcriber import escrever_saidas, guardar_antigas, hms, texto_antigo
 
 
 class Trecho:
@@ -84,3 +84,46 @@ def test_guardar_antigas_nao_sobrescreve_backup_anterior(tmp_path: Path):
     # A primeira geração é a referência original — ela não pode ser perdida.
     assert (guardadas / "Aula.srt").read_text(encoding="utf-8") == "primeira geração"
     assert any(p.name.startswith("Aula.srt.") for p in guardadas.iterdir())
+
+
+def test_texto_antigo_prefere_txt_quando_existe(tmp_path: Path):
+    video = tmp_path / "Aula.mp4"
+    guardadas = tmp_path / config.PASTA_ANTIGAS
+    guardadas.mkdir()
+    (guardadas / "Aula.txt").write_text("texto plano guardado")
+    (guardadas / "Aula.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\noutro texto\n")
+
+    assert texto_antigo(video) == "texto plano guardado"
+
+
+def test_texto_antigo_extrai_do_srt_quando_nao_ha_txt(tmp_path: Path):
+    # Nenhuma legenda original do acervo tinha `.txt` — só `.srt`. Sem esse
+    # fallback, texto_antigo() devolve None para todo vídeo com legenda
+    # anterior, e a comparação nunca roda.
+    video = tmp_path / "Aula.mp4"
+    guardadas = tmp_path / config.PASTA_ANTIGAS
+    guardadas.mkdir()
+    (guardadas / "Aula.srt").write_text(
+        "1\n00:00:00,000 --> 00:00:04,000\nolá mundo\n\n"
+        "2\n00:00:04,000 --> 00:00:08,000\ntudo bem\n")
+
+    assert texto_antigo(video) == "olá mundo tudo bem"
+
+
+def test_texto_antigo_extrai_de_vtt_salvo_como_srt(tmp_path: Path):
+    # Caso real do acervo: `.srt` com conteúdo WEBVTT dentro (cabeçalho
+    # `WEBVTT`, `X-TIMESTAMP-MAP`, timestamp com ponto em vez de vírgula).
+    video = tmp_path / "Aula.mp4"
+    guardadas = tmp_path / config.PASTA_ANTIGAS
+    guardadas.mkdir()
+    (guardadas / "Aula.srt").write_text(
+        "WEBVTT\n"
+        "X-TIMESTAMP-MAP=MPEGTS:132006,LOCAL:00:00:00.000\n\n"
+        "1\n00:00:00.700 --> 00:00:04.700\nolá querido\n\n"
+        "2\n00:00:04.700 --> 00:00:09.300\ntudo bem\n")
+
+    assert texto_antigo(video) == "olá querido tudo bem"
+
+
+def test_texto_antigo_devolve_none_sem_backup(tmp_path: Path):
+    assert texto_antigo(tmp_path / "Sozinha.mp4") is None

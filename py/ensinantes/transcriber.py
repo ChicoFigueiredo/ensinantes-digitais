@@ -11,10 +11,14 @@ inteira, não legendas — misturar as duas coisas perderia as duas.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
 
 from . import config, db
+
+_LINHA_INDICE = re.compile(r"^\d+$")
+_LINHA_METADADO_VTT = re.compile(r"^(WEBVTT|X-TIMESTAMP-MAP|NOTE)\b", re.IGNORECASE)
 
 
 def _carregar_modelo():
@@ -88,10 +92,40 @@ def guardar_antigas(video: Path) -> list[Path]:
     return movidos
 
 
+def _texto_de_srt(conteudo: str) -> str:
+    """As falas de um `.srt` — ou de um `.vtt` salvo com extensão `.srt`, o
+    formato real de parte das legendas legadas do acervo (cabeçalho `WEBVTT`,
+    timestamp com ponto em vez de vírgula) — sem índice, timestamp nem
+    cabeçalho."""
+    falas = []
+    for linha in conteudo.splitlines():
+        linha = linha.strip()
+        if not linha:
+            continue
+        if "-->" in linha or _LINHA_INDICE.match(linha) or _LINHA_METADADO_VTT.match(linha):
+            continue
+        falas.append(linha)
+    return " ".join(falas)
+
+
 def texto_antigo(video: Path) -> str | None:
-    """O `.txt` guardado no backup — insumo da comparação."""
-    guardado = video.parent / config.PASTA_ANTIGAS / (video.stem + ".txt")
-    return guardado.read_text(encoding="utf-8") if guardado.exists() else None
+    """O texto guardado no backup — insumo da comparação.
+
+    Prefere o `.txt` (produzido por uma passada anterior deste próprio
+    worker). A legenda ORIGINAL do acervo, porém, só existe como `.srt` —
+    nenhum vídeo tinha `.txt` antes desta tarefa — então cai para extrair o
+    texto do `.srt` guardado.
+    """
+    pasta = video.parent / config.PASTA_ANTIGAS
+    txt = pasta / (video.stem + ".txt")
+    if txt.exists():
+        return txt.read_text(encoding="utf-8")
+
+    srt = pasta / (video.stem + ".srt")
+    if srt.exists():
+        return _texto_de_srt(srt.read_text(encoding="utf-8"))
+
+    return None
 
 
 def processar(conn: sqlite3.Connection, item: sqlite3.Row, pipeline) -> None:
