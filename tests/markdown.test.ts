@@ -105,3 +105,45 @@ test("URL com & no query string não fica escapada duas vezes", () => {
   expect(h).toContain('href="https://exemplo.com?a=1&amp;b=2"');
   expect(h).not.toContain("&amp;amp;");
 });
+
+// Régua horizontal (correção 1, rodada 1) — 105 ocorrências em 8 dos 9
+// arquivos reais de acervo/Repo/*.md. `---`, `***` e `___` (três ou mais do
+// mesmo caractere, sozinhos na linha, com espaços tolerados em volta).
+
+test("--- entre parágrafos vira <hr>", () => {
+  const h = paraHtml("um\n\n---\n\ndois");
+  expect(h).toContain("<hr>");
+  expect(h).not.toContain("<p>---</p>");
+});
+
+test("*** e ___ também viram <hr>", () => {
+  expect(paraHtml("um\n\n***\n\ndois")).toContain("<hr>");
+  expect(paraHtml("um\n\n___\n\ndois")).toContain("<hr>");
+});
+
+test("régua no início do arquivo vira <hr>", () => {
+  // Nenhum dos nove arquivos reais começa com régua (nem frontmatter), mas a
+  // regra tem que ficar certa mesmo fora do corpus: início do arquivo conta
+  // como "precedido por linha em branco".
+  expect(paraHtml("---\n\ntexto")).toContain("<hr>");
+});
+
+test("régua tolera espaços em volta e entre os caracteres", () => {
+  expect(paraHtml("um\n\n  ---  \n\ndois")).toContain("<hr>");
+  expect(paraHtml("um\n\n- - -\n\ndois")).toContain("<hr>");
+});
+
+test("Texto\\n--- (sem linha em branco entre eles) é título setext, não régua", () => {
+  // Escolha explícita: régua exige linha anterior vazia (ou início do
+  // arquivo) para não confundir com título setext, onde `---` logo abaixo de
+  // texto vira <h2> em markdown de verdade. Este parser não implementa
+  // setext (só ATX, `#`) — o que importa aqui é que o caso NÃO vire <hr>.
+  const h = paraHtml("Texto\n---");
+  expect(h).not.toContain("<hr>");
+});
+
+test("régua dentro de bloco de código cercado continua texto literal", () => {
+  const h = paraHtml("```\num\n\n---\n\ndois\n```");
+  expect(h).not.toContain("<hr>");
+  expect(h).toContain("---");
+});

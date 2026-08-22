@@ -81,11 +81,26 @@ function emLinha(texto: string): string {
 const celulas = (linha: string): string[] =>
   linha.replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
 
+/**
+ * Régua horizontal: três ou mais do mesmo caractere (`-`, `*` ou `_`),
+ * tolerando espaços entre eles e nas pontas, sozinhos na linha.
+ *
+ * `105` ocorrências em `8` dos `9` arquivos de `acervo/Repo/` — o segundo
+ * construto mais comum do corpus depois de tabela.
+ */
+const REGRA_HR = /^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+
 export function paraHtml(md: string): string {
   const linhas = md.replace(/\r/g, "").split("\n");
   const saida: string[] = [];
   const paragrafo: string[] = [];
   let i = 0;
+
+  // Início do arquivo conta como "precedido por linha em branco": nenhum dos
+  // nove arquivos reais começa com régua ou frontmatter, mas a regra fica
+  // certa mesmo assim — ver teste do caso `Texto\n---` (título setext, não
+  // régua) mais abaixo.
+  let precedidaPorBranco = true;
 
   const fecharParagrafo = () => {
     if (paragrafo.length) {
@@ -96,10 +111,12 @@ export function paraHtml(md: string): string {
 
   while (i < linhas.length) {
     const l = linhas[i]!;
+    const foiPrecedidaPorBranco = precedidaPorBranco;
 
     // Bloco de código ANTES de qualquer processamento em linha: nada de `**`
     // ou `` ` `` sendo interpretado dentro. O conteúdo só passa por
-    // `escapar`, nunca por `emLinha`.
+    // `escapar`, nunca por `emLinha`. Isso inclui régua: `---` dentro da
+    // cerca é texto literal, nunca <hr>.
     if (/^```/.test(l)) {
       fecharParagrafo();
       const corpo: string[] = [];
@@ -107,6 +124,20 @@ export function paraHtml(md: string): string {
       while (i < linhas.length && !/^```/.test(linhas[i]!)) corpo.push(linhas[i++]!);
       i++; // consome a cerca de fechamento (ou o fim do arquivo, se faltar)
       saida.push(`<pre><code>${escapar(corpo.join("\n"))}</code></pre>`);
+      precedidaPorBranco = false;
+      continue;
+    }
+
+    // Exige linha anterior vazia (ou início do arquivo) para não confundir
+    // com título setext: em markdown, `Texto\n---` (sem linha em branco entre
+    // as duas) é um <h2>, não uma régua. Este parser não implementa setext —
+    // só ATX (`#`) — então o caso vira parágrafo, não <hr>; o que importa
+    // aqui é NÃO virar régua por engano.
+    if (REGRA_HR.test(l) && foiPrecedidaPorBranco) {
+      fecharParagrafo();
+      saida.push("<hr>");
+      i++;
+      precedidaPorBranco = false;
       continue;
     }
 
@@ -116,6 +147,7 @@ export function paraHtml(md: string): string {
       const n = titulo[1]!.length;
       saida.push(`<h${n}>${emLinha(titulo[2]!)}</h${n}>`);
       i++;
+      precedidaPorBranco = false;
       continue;
     }
 
@@ -131,6 +163,7 @@ export function paraHtml(md: string): string {
       }
       saida.push(`<table><thead><tr>${cab.map((c) => `<th>${emLinha(c)}</th>`).join("")}` +
                  `</tr></thead><tbody>${corpo.join("")}</tbody></table>`);
+      precedidaPorBranco = false;
       continue;
     }
 
@@ -145,6 +178,7 @@ export function paraHtml(md: string): string {
         itens.push(`<li>${emLinha(padrao.exec(linhas[i++]!)![1]!)}</li>`);
       }
       saida.push(`<${tag}>${itens.join("")}</${tag}>`);
+      precedidaPorBranco = false;
       continue;
     }
 
@@ -153,13 +187,15 @@ export function paraHtml(md: string): string {
       fecharParagrafo();
       saida.push(`<blockquote>${emLinha(citacao[1]!)}</blockquote>`);
       i++;
+      precedidaPorBranco = false;
       continue;
     }
 
-    if (!l.trim()) { fecharParagrafo(); i++; continue; }
+    if (!l.trim()) { fecharParagrafo(); i++; precedidaPorBranco = true; continue; }
 
     paragrafo.push(l);
     i++;
+    precedidaPorBranco = false;
   }
 
   fecharParagrafo();
