@@ -8,6 +8,13 @@ import {
   gerarForaDoCatalogo, gerarRecortes, relatorio, script, type LinhaRecorte,
 } from "../src/recortes.ts";
 
+// Estes testes NÃO podem escrever em `relatorios/` nem em `scripts/`: fazendo
+// isso, `bun test` reescrevia o script real de apagar recortes com os dados da
+// fixture, e ele passava a prometer apagar 127 GB listando duas pastas
+// inventadas de 0 byte.
+const SAIDA = join(tmpdir(), "ensinantes-testes-recortes");
+const DESTINOS = { relatorios: SAIDA, scripts: SAIDA };
+
 const AMOSTRA: LinhaRecorte[] = [
   { relPath: "1-Ensinantes/00-Lives.de.Leads/00.01-Descobrindo 720 x 1280",
     arquivos: 15862, bytes: 12_000_000_000, aula: null },
@@ -74,11 +81,15 @@ test("gerarRecortes lê a tabela recortes e escreve os dois arquivos", () => {
   db.run("INSERT INTO recortes (rel_path, arquivos, bytes) VALUES (?, ?, ?)",
     ["1-Ensinantes/00-Modulo/00.02-Aula", 20, 2000]);
 
-  const r = gerarRecortes(db);
+  const r = gerarRecortes(db, DESTINOS);
   expect(r.total).toBe(2);
   expect(r.bytes).toBe(3000);
   expect(Bun.file(r.relatorio).size).toBeGreaterThan(0);
   expect(Bun.file(r.script).size).toBeGreaterThan(0);
+  // A trava: dado de fixture nunca pode sair na pasta de produção. O script
+  // real promete apagar 127 GB — se um teste o reescrever, ele passa a mentir.
+  expect(r.script.startsWith(SAIDA)).toBe(true);
+  expect(r.relatorio.startsWith(SAIDA)).toBe(true);
 });
 
 // --- fora-do-catalogo.md -------------------------------------------------
@@ -110,19 +121,19 @@ const IGNORADOS = [
 ];
 
 test("fora-do-catalogo conta o total de itens ignorados", () => {
-  const r = gerarForaDoCatalogo(IGNORADOS, RAIZ);
+  const r = gerarForaDoCatalogo(IGNORADOS, RAIZ, SAIDA);
   expect(r.total).toBe(IGNORADOS.length);
 });
 
 test("a pasta _antigo mostra o conteúdo — a aula que tem dentro, não só o caminho", async () => {
-  const r = gerarForaDoCatalogo(IGNORADOS, RAIZ);
+  const r = gerarForaDoCatalogo(IGNORADOS, RAIZ, SAIDA);
   const md = await Bun.file(r.relatorio).text();
   expect(md).toContain("01.04-Como Tirar as Suas Dúvidas.mp4");
   expect(md).toContain("01.04-Como Tirar as Suas Dúvidas.srt");
 });
 
 test("documentos pessoais aparecem explicados com a palavra 'de propósito'", async () => {
-  const r = gerarForaDoCatalogo(IGNORADOS, RAIZ);
+  const r = gerarForaDoCatalogo(IGNORADOS, RAIZ, SAIDA);
   const md = await Bun.file(r.relatorio).text();
   expect(md).toContain("Documentos pessoais");
   expect(md).toContain("de propósito");
@@ -130,7 +141,7 @@ test("documentos pessoais aparecem explicados com a palavra 'de propósito'", as
 });
 
 test("restos de organização agrupam lock do excel, script e listas", async () => {
-  const r = gerarForaDoCatalogo(IGNORADOS, RAIZ);
+  const r = gerarForaDoCatalogo(IGNORADOS, RAIZ, SAIDA);
   const md = await Bun.file(r.relatorio).text();
   const secao = md.slice(md.indexOf("Restos de organização"), md.indexOf("## Outros"));
   expect(secao).toContain("~$Mapa.do.Curso.On-line.(Completo).xlsx");
@@ -140,14 +151,14 @@ test("restos de organização agrupam lock do excel, script e listas", async () 
 });
 
 test("caminho que não casa com nenhum motivo conhecido cai em 'Outros', não some", async () => {
-  const r = gerarForaDoCatalogo(IGNORADOS, RAIZ);
+  const r = gerarForaDoCatalogo(IGNORADOS, RAIZ, SAIDA);
   const md = await Bun.file(r.relatorio).text();
   expect(md).toContain("## Outros");
   expect(md).toContain("um-arquivo-qualquer.xyz");
 });
 
 test("_transcricoes.antigas e versoes_anteriores ficam em grupos próprios", async () => {
-  const r = gerarForaDoCatalogo(IGNORADOS, RAIZ);
+  const r = gerarForaDoCatalogo(IGNORADOS, RAIZ, SAIDA);
   const md = await Bun.file(r.relatorio).text();
   expect(md).toContain("Backup de transcrição");
   expect(md).toContain("Versões anteriores");

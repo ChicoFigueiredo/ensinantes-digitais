@@ -26,6 +26,7 @@ import {
 import { dentroDoAcervo, servirArquivo } from "./arquivos.ts";
 import { lerTrechos, srtParaVtt } from "./legenda.ts";
 import { paraHtml } from "./markdown.ts";
+import { sincronizarCopia } from "./backup.ts";
 import { gerarRecortes } from "./recortes.ts";
 import { abrirNoSistema, revelar } from "./revelar.ts";
 import { disparar, estadoTarefas } from "./tarefas.ts";
@@ -357,12 +358,29 @@ export async function fetchSeguro(db: Database, req: Request): Promise<Response>
 
 const TENTATIVAS_PORTA = 20;
 
+/** De quanto em quanto tempo o catálogo é copiado para o acervo. */
+const MINUTOS_ENTRE_COPIAS = 30;
+
+/** Copia o catálogo, e diz no log se falhou — nunca derruba o painel por isso. */
+function copiarBanco(db: Database): void {
+  const r = sincronizarCopia(db);
+  if (!r.ok) console.warn(`cópia do catálogo falhou: ${r.erro}`);
+}
+
 export function servir(db: Database, porta: number): void {
   for (let p = porta; p < porta + TENTATIVAS_PORTA; p++) {
     try {
       if (p !== porta) console.log(`porta ${p - 1} em uso — tentando ${p}…`);
       Bun.serve({ hostname: PAINEL_HOST, port: p, fetch: (req) => fetchSeguro(db, req) });
       console.log(`painel em http://${PAINEL_HOST}:${p}`);
+
+      // O acervo tem redundância; `ensinantes.db` não. Vídeo e PDF se
+      // recuperam do disco original, e o catálogo se refaz com `bun run scan`
+      // — mas progresso, anotação e estado da fila só existem aqui. Copiar na
+      // subida e de tempos em tempos é o que separa "perdi o índice" de
+      // "perdi o que eu já tinha estudado".
+      copiarBanco(db);
+      setInterval(() => copiarBanco(db), MINUTOS_ENTRE_COPIAS * 60_000).unref();
       // A porta TEM de ser a 17789 para o túnel funcionar. Painel em outra
       // porta = túnel entregando em porta vazia = 502 no tablet, e o terminal
       // aqui parecendo normal.

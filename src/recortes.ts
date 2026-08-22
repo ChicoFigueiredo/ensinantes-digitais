@@ -93,15 +93,28 @@ echo "Pronto: ${gb(bytes)} liberados."
 `;
 }
 
-/** Lê a tabela `recortes` e escreve o relatório e o script. */
-export function gerarRecortes(db: Database):
-  { relatorio: string; script: string; total: number; bytes: number } {
+/**
+ * Lê a tabela `recortes` e escreve o relatório e o script.
+ *
+ * `destinos` existe por causa dos TESTES. Sem ele a função escrevia sempre em
+ * `relatorios/` e `scripts/`, então rodar `bun test` reescrevia o script real
+ * de apagar recortes com os dados da fixture: ele passava a anunciar "0,00 GB
+ * em 2 pastas" e a listar caminhos de `/mnt/e/` montados com nomes inventados.
+ * Quem rodasse confiando nele não apagaria nada e concluiria que a limpeza foi
+ * feita — com os 127 GB ainda no disco. O padrão continua sendo o de produção.
+ */
+export function gerarRecortes(
+  db: Database,
+  destinos: { relatorios?: string; scripts?: string } = {},
+): { relatorio: string; script: string; total: number; bytes: number } {
+  const pastaRelatorios = destinos.relatorios ?? RELATORIOS;
+  const pastaScripts = destinos.scripts ?? SCRIPTS;
   const linhas = listar(db);
-  mkdirSync(RELATORIOS, { recursive: true });
-  mkdirSync(SCRIPTS, { recursive: true });
+  mkdirSync(pastaRelatorios, { recursive: true });
+  mkdirSync(pastaScripts, { recursive: true });
 
-  const md = join(RELATORIOS, "recortes.md");
-  const sh = join(SCRIPTS, "apagar-recortes.sh");
+  const md = join(pastaRelatorios, "recortes.md");
+  const sh = join(pastaScripts, "apagar-recortes.sh");
   writeFileSync(md, relatorio(linhas), "utf-8");
 
   // O caminho real, não o do symlink `acervo`. Este arquivo é guardado e
@@ -212,8 +225,11 @@ function listarConteudo(relPath: string, acervo: string): string[] {
 }
 
 /** Recebe a lista que a varredura acumulou e escreve o relatório do que ficou de fora. */
-export function gerarForaDoCatalogo(ignorados: string[], acervo: string = ACERVO):
-  { relatorio: string; total: number } {
+export function gerarForaDoCatalogo(
+  ignorados: string[],
+  acervo: string = ACERVO,
+  destinoRelatorios?: string,
+): { relatorio: string; total: number } {
   const porMotivo = new Map<Motivo, string[]>();
   for (const rel of ignorados) {
     const m = motivoDe(rel);
@@ -246,8 +262,10 @@ explica o motivo.
 
 ${secoes.join("\n")}`;
 
-  mkdirSync(RELATORIOS, { recursive: true });
-  const md = join(RELATORIOS, "fora-do-catalogo.md");
+  // Mesmo motivo de `gerarRecortes`: teste não pode reescrever o relatório real.
+  const pastaRelatorios = destinoRelatorios ?? RELATORIOS;
+  mkdirSync(pastaRelatorios, { recursive: true });
+  const md = join(pastaRelatorios, "fora-do-catalogo.md");
   writeFileSync(md, relatorioMd, "utf-8");
 
   return { relatorio: md, total: ignorados.length };

@@ -50,7 +50,15 @@ export function sincronizarCopia(db: Database): Sincronizado {
     // `log` não existe neste projeto — a função equivalente em `db.ts` é
     // `registrar`, com o mesmo formato (db, nível, origem, mensagem), só que
     // o nível é "erro" e não "error".
-    registrar(db, "erro", "sync", `cópia do banco falhou: ${erro}`);
+    //
+    // O registro vai dentro do seu próprio try: a causa mais provável de a
+    // cópia falhar é o banco estar inutilizável, e nesse caso `registrar`
+    // falha também. Sem esta guarda, a função que promete devolver
+    // `ok: false` ESTOURA — e como ela roda num setInterval do painel, a
+    // exceção não teria quem a pegasse.
+    try {
+      registrar(db, "erro", "sync", `cópia do banco falhou: ${erro}`);
+    } catch { /* banco indisponível: o retorno abaixo é o que sobra para contar */ }
     return { ok: false, bytes: 0, ms: Date.now() - inicio, caminho: COPIA_PATH, erro };
   }
 }

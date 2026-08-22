@@ -28,6 +28,7 @@ Comandos:
   recortes      gera os recortes a partir das transcrições
   divergencias  regrava relatorios/divergencias.md a partir do banco
   status        mostra o catálogo por curso e a fila de transcrição
+  backup        copia o catálogo (ensinantes.db) para dentro do acervo
 `.trim();
 
 /** Imprime a ajuda e sai. Sem argumento sai limpo (0); comando desconhecido é erro (1). */
@@ -177,6 +178,17 @@ async function comandoStatus() {
   console.table(fila);
 }
 
+async function comandoBackup() {
+  const db = await abrirBanco();
+  const { sincronizarCopia } = await importarModulo("./backup.ts");
+  const r = sincronizarCopia(db);
+  if (!r.ok) {
+    console.error(`falhou: ${r.erro}`);
+    process.exit(1);
+  }
+  console.log(`${(r.bytes / 1048576).toFixed(2)} MB em ${r.ms} ms → ${r.caminho}`);
+}
+
 async function main() {
   const [comando] = process.argv.slice(2);
 
@@ -197,6 +209,8 @@ async function main() {
       return comandoDivergencias();
     case "status":
       return comandoStatus();
+    case "backup":
+      return comandoBackup();
     default:
       imprimirAjuda(1);
   }
