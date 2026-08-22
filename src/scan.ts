@@ -10,11 +10,13 @@
  * recorte. Casar por nome perderia as pastas de `00-Lives.de.Leads`, que têm
  * sufixo de resolução (`… 720 x 1280`) e não batem com o nome do vídeo.
  */
-import { readdirSync, readFileSync, statSync, type Dirent } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync, type Dirent } from "node:fs";
+import { basename, join } from "node:path";
+import type { Database } from "bun:sqlite";
 
-import { PASTAS_IGNORADAS } from "./config.ts";
-import { lerItem } from "./naming.ts";
+import { ACERVO, PASTAS_IGNORADAS } from "./config.ts";
+import { lerItem, lerLinhaLista, lerModulo, ordenarPorCodigo } from "./naming.ts";
+import { registrar } from "./db.ts";
 
 export type Tipo = "video" | "pdf" | "planilha" | "doc" | "link" | "markdown";
 
@@ -190,4 +192,249 @@ export function varrerPasta(absoluto: string, relativo: string): Achado {
   }
 
   return { itens, recortes, ignorados };
+}
+
+/** Ordem dos cursos na home. `Repo` fecha, como quarta seção. */
+export const CURSOS_ESPERADOS = [
+  "1-Ensinantes", "2-Acelerador.Conteudo.IA", "3-Criadores.Videos", "Repo",
+] as const;
+
+/**
+ * Documentos pessoais que estão soltos na raiz do curso 1.
+ *
+ * Ficam FORA do catálogo porque o painel tem um segundo usuário: o boleto e o
+ * certificado do Chico não são material de curso, e não há razão para o
+ * Procópio topar com eles ao navegar. Aparecem em
+ * `relatorios/fora-do-catalogo.md` — não somem, só não entram na navegação.
+ */
+export function ehPessoal(arquivo: string): boolean {
+  return /^(boleto|certificado)[-_]/i.test(arquivo);
+}
+
+/** Restos de organização: scripts de criação de pasta e listas de trabalho. */
+export function ehLixoDeOrganizacao(arquivo: string): boolean {
+  return /^~\$/.test(arquivo)                    // lock do Excel
+    || /^_/.test(arquivo)                        // _l.txt
+    || /^(lista|gera_pastas)\./i.test(arquivo)
+    || /\.(sh|bash|py|log)$/i.test(arquivo);
+}
+
+/** Duração em segundos por ffprobe. null quando o ffprobe não responde. */
+export function duracaoDe(absoluto: string): number | null {
+  const p = Bun.spawnSync([
+    "ffprobe", "-v", "error", "-show_entries", "format=duration",
+    "-of", "default=noprint_wrappers=1:nokey=1", absoluto,
+  ]);
+  const n = Number(new TextDecoder().decode(p.stdout).trim());
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+const slugificar = (pasta: string): string =>
+  pasta.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+       .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+/** Título do curso a partir da pasta: tira o prefixo numérico, humaniza. */
+const tituloDoCurso = (pasta: string): string =>
+  pasta === "Repo" ? "Materiais" : lerModulo(pasta).titulo;
+
+/**
+ * Escaneia um curso inteiro e escreve no banco.
+ *
+ * Idempotente por SUBSTITUIÇÃO: apaga os módulos do curso e reconstrói. É o
+ * `ON DELETE CASCADE` que limpa os itens junto, e é o que faz uma aula apagada
+ * do disco sumir do catálogo no scan seguinte. O estado de quem estuda NÃO é
+ * tocado: ele vive em `progresso`/`notas`, com chave textual, e sobrevive à
+ * reconstrução.
+ */
+export function escanearCurso(db: Database, absoluto: string, posicao: number):
+  { itens: number; recortes: number; ignorados: string[] } {
+  const pasta = basename(absoluto);
+  const slug = slugificar(pasta);
+
+  const entradas = readdirSync(absoluto, { withFileTypes: true });
+  const subpastas = entradas.filter((e) => e.isDirectory() && !PASTAS_IGNORADAS.has(e.name));
+  const listaTxt = entradas.find((e) => e.isFile() && /^lista\.txt$/i.test(e.name));
+
+  const materiais = pasta === "Repo";
+  const esqueleto = !materiais && subpastas.length === 0 && !!listaTxt;
+  const estado = materiais ? "materiais" : esqueleto ? "esqueleto" : "completo";
+
+  db.run(`INSERT INTO cursos (slug, pasta, posicao, titulo, estado, escaneado_em)
+          VALUES (?, ?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(slug) DO UPDATE SET
+            pasta = excluded.pasta, posicao = excluded.posicao,
+            titulo = excluded.titulo, estado = excluded.estado,
+            escaneado_em = excluded.escaneado_em`,
+    [slug, pasta, posicao, tituloDoCurso(pasta), estado]);
+
+  const cursoId = db.query<{ id: number }, [string]>(
+    "SELECT id FROM cursos WHERE slug = ?").get(slug)!.id;
+
+  // Reconstrução: o catálogo é derivado, então apagar e refazer é mais simples
+  // e mais correto do que reconciliar diferença a diferença.
+  db.run("DELETE FROM modulos WHERE curso_id = ?", [cursoId]);
+
+  const novoModulo = db.prepare(
+    "INSERT INTO modulos (curso_id, codigo, pasta, titulo, posicao) VALUES (?, ?, ?, ?, ?)");
+  const novoItem = db.prepare(
+    `INSERT INTO itens (modulo_id, tipo, codigo, titulo, rel_path, posicao, bytes,
+                        duracao, srt_path, alvo, transcricao_estado)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(rel_path) DO UPDATE SET
+       modulo_id = excluded.modulo_id, tipo = excluded.tipo, codigo = excluded.codigo,
+       titulo = excluded.titulo, posicao = excluded.posicao, bytes = excluded.bytes,
+       duracao = COALESCE(excluded.duracao, itens.duracao),
+       srt_path = excluded.srt_path, alvo = excluded.alvo`);
+  // `varrerPasta` sempre devolve bytes:0 para recorte (quem mede é
+  // `medirRecortes`, numa chamada só, no fim de `escanearTudo` — descer pasta
+  // a pasta aqui custaria de novo os ~90-215 s que a Tarefa 4 evitou). O
+  // UPSERT por isso NÃO pode fazer `bytes = excluded.bytes`: isso apagaria a
+  // medição a cada scan. A regra é preservar enquanto a contagem de arquivos
+  // não mudar, e só zerar (forçando remedição) quando ela mudar.
+  const novoRecorte = db.prepare(
+    `INSERT INTO recortes (rel_path, arquivos, bytes, visto_em)
+     VALUES (?, ?, 0, datetime('now'))
+     ON CONFLICT(rel_path) DO UPDATE SET
+       arquivos = excluded.arquivos,
+       visto_em = excluded.visto_em,
+       bytes = CASE WHEN excluded.arquivos = recortes.arquivos THEN recortes.bytes ELSE 0 END`);
+
+  let nItens = 0, nRecortes = 0;
+  const ignorados: string[] = [];
+
+  const gravarItens = (moduloId: number, achados: ItemBruto[]): void => {
+    ordenarPorCodigo(achados).forEach((it, i) => {
+      const abs = join(ACERVO, it.relPath);
+      // ffprobe só no que ainda não tem duração: 232 chamadas na primeira vez,
+      // zero nas seguintes. É o COALESCE do UPSERT que preserva a medida.
+      const jaTem = db.query<{ duracao: number | null }, [string]>(
+        "SELECT duracao FROM itens WHERE rel_path = ?").get(it.relPath)?.duracao ?? null;
+      const dur = it.tipo === "video" ? (jaTem ?? duracaoDe(abs)) : null;
+
+      novoItem.run(moduloId, it.tipo, it.codigo, it.titulo, it.relPath, i, it.bytes,
+        dur, it.srtPath, it.alvo,
+        it.tipo === "video" ? (it.srtPath ? "pronto" : "pendente") : "sem-video");
+      nItens++;
+    });
+  };
+
+  if (esqueleto) {
+    // Sem pasta nenhuma: os módulos vêm do lista.txt, que é CRLF.
+    const linhas = readFileSync(join(absoluto, listaTxt!.name), "utf-8").split("\n");
+    let pos = 0;
+    for (const linha of linhas) {
+      const n = lerLinhaLista(linha);
+      if (!n) continue;
+      novoModulo.run(cursoId, n.codigo ?? String(pos + 1).padStart(2, "0"), null, n.titulo, pos++);
+    }
+    return { itens: 0, recortes: 0, ignorados };
+  }
+
+  if (materiais) {
+    // Um módulo implícito. Os markdowns e a planilha entram; script, log,
+    // lock do Excel e versoes_anteriores ficam fora.
+    const modId = Number(novoModulo.run(cursoId, "00", null, "Documentos", 0).lastInsertRowid);
+    const achado = varrerPasta(absoluto, pasta);
+    ignorados.push(...achado.ignorados);
+    const validos: ItemBruto[] = [];
+    for (const it of achado.itens) {
+      if (ehLixoDeOrganizacao(basename(it.relPath))) { ignorados.push(it.relPath); continue; }
+      validos.push(it);
+    }
+    gravarItens(modId, validos);
+    return { itens: nItens, recortes: 0, ignorados };
+  }
+
+  // Curso completo: um módulo por subpasta, na ordem do código.
+  const ordenados = ordenarPorCodigo(subpastas.map((d) => ({ ...lerModulo(d.name), pasta: d.name })));
+  ordenados.forEach((m, pos) => {
+    const modId = Number(
+      novoModulo.run(cursoId, m.codigo ?? m.pasta, m.pasta, m.titulo, pos).lastInsertRowid);
+    const achado = varrerPasta(join(absoluto, m.pasta), `${pasta}/${m.pasta}`);
+    ignorados.push(...achado.ignorados);
+    gravarItens(modId, achado.itens);
+    for (const r of achado.recortes) { novoRecorte.run(r.relPath, r.arquivos); nRecortes++; }
+  });
+
+  // Arquivos soltos na raiz do curso — existem no curso 1. A mesma varredura
+  // do nível raiz também reencontra as próprias pastas de módulo (elas não
+  // são recorte nem PASTAS_IGNORADAS, então `varrerPasta` as devolve como
+  // "ignoradas"): essas são falso-positivo aqui, porque já foram catalogadas
+  // acima — por isso ficam de fora do relatório de ignorados.
+  const nomesModulos = new Set(subpastas.map((d) => d.name));
+  const achadoRaiz = varrerPasta(absoluto, pasta);
+  for (const rel of achadoRaiz.ignorados) {
+    if (nomesModulos.has(basename(rel))) continue;
+    ignorados.push(rel);
+  }
+  const soltos: ItemBruto[] = [];
+  for (const it of achadoRaiz.itens) {
+    const nome = basename(it.relPath);
+    if (ehPessoal(nome) || ehLixoDeOrganizacao(nome)) { ignorados.push(it.relPath); continue; }
+    soltos.push(it);
+  }
+  if (soltos.length) {
+    const modId = Number(
+      novoModulo.run(cursoId, "ZZ", null, "Avulsos", ordenados.length).lastInsertRowid);
+    gravarItens(modId, soltos);
+  }
+
+  registrar(db, "info", "scan", `${pasta}: ${nItens} itens, ${nRecortes} pastas de recorte`);
+  return { itens: nItens, recortes: nRecortes, ignorados };
+}
+
+/**
+ * Mede em lote os recortes que ainda não têm byte.
+ *
+ * Uma passada do `find` sobre os 171.998 PNGs custa ~90 s numa máquina ociosa.
+ * Por isso só as pastas com `bytes = 0` entram: numa segunda varredura, sem
+ * mudança no disco, esta função não chama nada.
+ */
+function medirOsQueFaltam(db: Database): { medidas: number; bytes: number } {
+  const pendentes = db.query<{ rel_path: string }, []>(
+    "SELECT rel_path FROM recortes WHERE bytes = 0").all();
+  if (!pendentes.length) return { medidas: 0, bytes: 0 };
+
+  const porAbsoluto = new Map(pendentes.map((p) => [join(ACERVO, p.rel_path), p.rel_path]));
+  const medido = medirRecortes([...porAbsoluto.keys()]);
+
+  const gravar = db.prepare("UPDATE recortes SET bytes = ? WHERE rel_path = ?");
+  let total = 0;
+  const lote = db.transaction(() => {
+    for (const [absoluto, bytes] of medido) {
+      const rel = porAbsoluto.get(absoluto);
+      if (!rel) continue;          // o `find` devolveu pasta que não pedimos
+      gravar.run(bytes, rel);
+      total += bytes;
+    }
+  });
+  lote();
+  return { medidas: medido.size, bytes: total };
+}
+
+/**
+ * Roda os quatro cursos na ordem da home e, ao final, mede em lote os
+ * recortes que ainda não têm byte. `bytesRecortes` é o total ACUMULADO de
+ * todas as pastas de recorte no banco (medidas agora ou em scans
+ * anteriores) — não só o que foi medido nesta chamada.
+ */
+export function escanearTudo(db: Database):
+  { cursos: number; itens: number; recortes: number; ignorados: string[]; bytesRecortes: number } {
+  let cursos = 0, itens = 0, recortes = 0;
+  const ignorados: string[] = [];
+  CURSOS_ESPERADOS.forEach((pasta, i) => {
+    const abs = join(ACERVO, pasta);
+    if (!existsSync(abs)) { registrar(db, "erro", "scan", `pasta ausente: ${pasta}`); return; }
+    const r = escanearCurso(db, abs, i);
+    cursos++; itens += r.itens; recortes += r.recortes;
+    ignorados.push(...r.ignorados);
+  });
+
+  const medicao = medirOsQueFaltam(db);
+  const bytesRecortes = db.query<{ bytes: number | null }, []>(
+    "SELECT SUM(bytes) bytes FROM recortes").get()?.bytes ?? 0;
+  registrar(db, "info", "scan",
+    `recortes medidos agora: ${medicao.medidas} pasta(s); total acumulado: ${(bytesRecortes / 1073741824).toFixed(2)} GB`);
+
+  return { cursos, itens, recortes, ignorados, bytesRecortes };
 }
