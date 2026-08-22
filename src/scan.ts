@@ -240,11 +240,26 @@ const tituloDoCurso = (pasta: string): string =>
 /**
  * Escaneia um curso inteiro e escreve no banco.
  *
- * Idempotente por SUBSTITUIÇÃO: apaga os módulos do curso e reconstrói. É o
- * `ON DELETE CASCADE` que limpa os itens junto, e é o que faz uma aula apagada
- * do disco sumir do catálogo no scan seguinte. O estado de quem estuda NÃO é
- * tocado: ele vive em `progresso`/`notas`, com chave textual, e sobrevive à
- * reconstrução.
+ * Idempotente por RECONCILIAÇÃO (marcar-e-varrer), não por apagar-e-recriar.
+ * Um `DELETE FROM modulos` no início parecia mais simples, mas `itens.modulo_id`
+ * tem `ON DELETE CASCADE`: apagar os módulos apagava TODOS os itens do curso
+ * antes da reinserção, e isso quebrava três coisas de uma vez —
+ *
+ *   1. o cache de duração nunca existia: a linha já não estava lá quando o
+ *      UPSERT rodava, então `jaTem` nunca achava nada e o ffprobe repetia
+ *      nos 231 vídeos em toda varredura;
+ *   2. `itens.id` não era estável entre scans — e é exatamente essa
+ *      instabilidade que a chave textual `i:<id>` de `progresso`/`notas`
+ *      precisa NÃO ter, porque essas tabelas sobrevivem à reconstrução do
+ *      catálogo referenciando a aula pelo id;
+ *   3. `transcricao_estado`, `tentativas`, `transcrito_em` e `comparacao`
+ *      eram zerados a cada scan, mesmo já preenchidos por outra tarefa.
+ *
+ * A correção: cada varredura marca (em duas tabelas TEMP) o que encontrou no
+ * disco, grava por UPSERT — o que preserva o id e as colunas de estado de
+ * quem já existia — e só ao final apaga do banco o que não foi marcado. Itens
+ * antes de módulos: apagar módulo primeiro levaria os itens junto pela
+ * cascata, e a contagem de removidos mentiria.
  */
 export function escanearCurso(db: Database, absoluto: string, posicao: number):
   { itens: number; recortes: number; ignorados: string[] } {
@@ -270,12 +285,21 @@ export function escanearCurso(db: Database, absoluto: string, posicao: number):
   const cursoId = db.query<{ id: number }, [string]>(
     "SELECT id FROM cursos WHERE slug = ?").get(slug)!.id;
 
-  // Reconstrução: o catálogo é derivado, então apagar e refazer é mais simples
-  // e mais correto do que reconciliar diferença a diferença.
-  db.run("DELETE FROM modulos WHERE curso_id = ?", [cursoId]);
+  // Tabelas de "visto nesta varredura", para a reconciliação do final. TEMP
+  // porque são de vida curta e por conexão — não fazem parte do esquema.
+  db.run("CREATE TEMP TABLE IF NOT EXISTS vistos_itens (rel_path TEXT PRIMARY KEY)");
+  db.run("CREATE TEMP TABLE IF NOT EXISTS vistos_modulos (codigo TEXT PRIMARY KEY)");
+  db.run("DELETE FROM vistos_itens");
+  db.run("DELETE FROM vistos_modulos");
 
-  const novoModulo = db.prepare(
-    "INSERT INTO modulos (curso_id, codigo, pasta, titulo, posicao) VALUES (?, ?, ?, ?, ?)");
+  const upsertModulo = db.prepare(
+    `INSERT INTO modulos (curso_id, codigo, pasta, titulo, posicao)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(curso_id, codigo) DO UPDATE SET
+       pasta = excluded.pasta, titulo = excluded.titulo, posicao = excluded.posicao`);
+  const idDoModulo = db.query<{ id: number }, [number, string]>(
+    "SELECT id FROM modulos WHERE curso_id = ? AND codigo = ?");
+  const marcarModulo = db.prepare("INSERT OR IGNORE INTO vistos_modulos (codigo) VALUES (?)");
   const novoItem = db.prepare(
     `INSERT INTO itens (modulo_id, tipo, codigo, titulo, rel_path, posicao, bytes,
                         duracao, srt_path, alvo, transcricao_estado)
@@ -285,6 +309,10 @@ export function escanearCurso(db: Database, absoluto: string, posicao: number):
        titulo = excluded.titulo, posicao = excluded.posicao, bytes = excluded.bytes,
        duracao = COALESCE(excluded.duracao, itens.duracao),
        srt_path = excluded.srt_path, alvo = excluded.alvo`);
+  // Deliberadamente NÃO toca transcricao_estado, tentativas, transcrito_em
+  // nem comparacao: são preenchidos por outras tarefas (transcrição), e uma
+  // revarredura não pode apagar esse trabalho.
+  const marcarItem = db.prepare("INSERT OR IGNORE INTO vistos_itens (rel_path) VALUES (?)");
   // `varrerPasta` sempre devolve bytes:0 para recorte (quem mede é
   // `medirRecortes`, numa chamada só, no fim de `escanearTudo` — descer pasta
   // a pasta aqui custaria de novo os ~90-215 s que a Tarefa 4 evitou). O
@@ -302,11 +330,19 @@ export function escanearCurso(db: Database, absoluto: string, posicao: number):
   let nItens = 0, nRecortes = 0;
   const ignorados: string[] = [];
 
+  /** Upsert do módulo + marca como visto. Nunca use lastInsertRowid aqui: num UPDATE ele não aponta para a linha atualizada. */
+  const gravarModulo = (codigo: string, pastaModulo: string | null, titulo: string, pos: number): number => {
+    upsertModulo.run(cursoId, codigo, pastaModulo, titulo, pos);
+    marcarModulo.run(codigo);
+    return idDoModulo.get(cursoId, codigo)!.id;
+  };
+
   const gravarItens = (moduloId: number, achados: ItemBruto[]): void => {
     ordenarPorCodigo(achados).forEach((it, i) => {
       const abs = join(ACERVO, it.relPath);
       // ffprobe só no que ainda não tem duração: 232 chamadas na primeira vez,
-      // zero nas seguintes. É o COALESCE do UPSERT que preserva a medida.
+      // zero nas seguintes — agora que o item sobrevive entre scans, esta
+      // consulta de fato encontra o valor gravado no scan anterior.
       const jaTem = db.query<{ duracao: number | null }, [string]>(
         "SELECT duracao FROM itens WHERE rel_path = ?").get(it.relPath)?.duracao ?? null;
       const dur = it.tipo === "video" ? (jaTem ?? duracaoDe(abs)) : null;
@@ -314,70 +350,88 @@ export function escanearCurso(db: Database, absoluto: string, posicao: number):
       novoItem.run(moduloId, it.tipo, it.codigo, it.titulo, it.relPath, i, it.bytes,
         dur, it.srtPath, it.alvo,
         it.tipo === "video" ? (it.srtPath ? "pronto" : "pendente") : "sem-video");
+      marcarItem.run(it.relPath);
       nItens++;
     });
   };
 
-  if (esqueleto) {
-    // Sem pasta nenhuma: os módulos vêm do lista.txt, que é CRLF.
-    const linhas = readFileSync(join(absoluto, listaTxt!.name), "utf-8").split("\n");
-    let pos = 0;
-    for (const linha of linhas) {
-      const n = lerLinhaLista(linha);
-      if (!n) continue;
-      novoModulo.run(cursoId, n.codigo ?? String(pos + 1).padStart(2, "0"), null, n.titulo, pos++);
-    }
-    return { itens: 0, recortes: 0, ignorados };
-  }
+  // Tudo numa transação: agora são upserts seguidos de duas varreduras de
+  // reconciliação, e uma interrupção no meio deixaria o curso pela metade.
+  const rodar = db.transaction(() => {
+    if (esqueleto) {
+      // Sem pasta nenhuma: os módulos vêm do lista.txt, que é CRLF. Ainda
+      // assim pode haver arquivo solto (ex.: `gera_pastas.bash`) — nenhum
+      // vira item, mas entram em `ignorados` para o relatório da Tarefa 6.
+      const achado = varrerPasta(absoluto, pasta);
+      ignorados.push(...achado.ignorados, ...achado.itens.map((it) => it.relPath));
 
-  if (materiais) {
-    // Um módulo implícito. Os markdowns e a planilha entram; script, log,
-    // lock do Excel e versoes_anteriores ficam fora.
-    const modId = Number(novoModulo.run(cursoId, "00", null, "Documentos", 0).lastInsertRowid);
-    const achado = varrerPasta(absoluto, pasta);
-    ignorados.push(...achado.ignorados);
-    const validos: ItemBruto[] = [];
-    for (const it of achado.itens) {
-      if (ehLixoDeOrganizacao(basename(it.relPath))) { ignorados.push(it.relPath); continue; }
-      validos.push(it);
-    }
-    gravarItens(modId, validos);
-    return { itens: nItens, recortes: 0, ignorados };
-  }
+      const linhas = readFileSync(join(absoluto, listaTxt!.name), "utf-8").split("\n");
+      let pos = 0;
+      for (const linha of linhas) {
+        const n = lerLinhaLista(linha);
+        if (!n) continue;
+        gravarModulo(n.codigo ?? String(pos + 1).padStart(2, "0"), null, n.titulo, pos++);
+      }
+    } else if (materiais) {
+      // Um módulo implícito. Os markdowns e a planilha entram; script, log,
+      // lock do Excel e versoes_anteriores ficam fora.
+      const modId = gravarModulo("00", null, "Documentos", 0);
+      const achado = varrerPasta(absoluto, pasta);
+      ignorados.push(...achado.ignorados);
+      const validos: ItemBruto[] = [];
+      for (const it of achado.itens) {
+        if (ehLixoDeOrganizacao(basename(it.relPath))) { ignorados.push(it.relPath); continue; }
+        validos.push(it);
+      }
+      gravarItens(modId, validos);
+    } else {
+      // Curso completo: um módulo por subpasta, na ordem do código.
+      const ordenados = ordenarPorCodigo(subpastas.map((d) => ({ ...lerModulo(d.name), pasta: d.name })));
+      ordenados.forEach((m, pos) => {
+        const modId = gravarModulo(m.codigo ?? m.pasta, m.pasta, m.titulo, pos);
+        const achado = varrerPasta(join(absoluto, m.pasta), `${pasta}/${m.pasta}`);
+        ignorados.push(...achado.ignorados);
+        gravarItens(modId, achado.itens);
+        for (const r of achado.recortes) { novoRecorte.run(r.relPath, r.arquivos); nRecortes++; }
+      });
 
-  // Curso completo: um módulo por subpasta, na ordem do código.
-  const ordenados = ordenarPorCodigo(subpastas.map((d) => ({ ...lerModulo(d.name), pasta: d.name })));
-  ordenados.forEach((m, pos) => {
-    const modId = Number(
-      novoModulo.run(cursoId, m.codigo ?? m.pasta, m.pasta, m.titulo, pos).lastInsertRowid);
-    const achado = varrerPasta(join(absoluto, m.pasta), `${pasta}/${m.pasta}`);
-    ignorados.push(...achado.ignorados);
-    gravarItens(modId, achado.itens);
-    for (const r of achado.recortes) { novoRecorte.run(r.relPath, r.arquivos); nRecortes++; }
+      // Arquivos soltos na raiz do curso — existem no curso 1. A mesma
+      // varredura do nível raiz também reencontra as próprias pastas de
+      // módulo (elas não são recorte nem PASTAS_IGNORADAS, então
+      // `varrerPasta` as devolve como "ignoradas"): essas são falso-positivo
+      // aqui, porque já foram catalogadas acima — por isso ficam de fora do
+      // relatório de ignorados.
+      const nomesModulos = new Set(subpastas.map((d) => d.name));
+      const achadoRaiz = varrerPasta(absoluto, pasta);
+      for (const rel of achadoRaiz.ignorados) {
+        if (nomesModulos.has(basename(rel))) continue;
+        ignorados.push(rel);
+      }
+      const soltos: ItemBruto[] = [];
+      for (const it of achadoRaiz.itens) {
+        const nome = basename(it.relPath);
+        if (ehPessoal(nome) || ehLixoDeOrganizacao(nome)) { ignorados.push(it.relPath); continue; }
+        soltos.push(it);
+      }
+      if (soltos.length) {
+        const modId = gravarModulo("ZZ", null, "Avulsos", ordenados.length);
+        gravarItens(modId, soltos);
+      }
+    }
+
+    // Reconciliação: o que sumiu do disco (ou não foi tocado nesta
+    // varredura, ex.: curso que virou esqueleto) sai do catálogo. Itens
+    // antes de módulos — a ordem importa, ver o comentário do topo.
+    db.run(
+      `DELETE FROM itens
+        WHERE modulo_id IN (SELECT id FROM modulos WHERE curso_id = ?)
+          AND rel_path NOT IN (SELECT rel_path FROM vistos_itens)`, [cursoId]);
+    db.run(
+      `DELETE FROM modulos
+        WHERE curso_id = ?
+          AND codigo NOT IN (SELECT codigo FROM vistos_modulos)`, [cursoId]);
   });
-
-  // Arquivos soltos na raiz do curso — existem no curso 1. A mesma varredura
-  // do nível raiz também reencontra as próprias pastas de módulo (elas não
-  // são recorte nem PASTAS_IGNORADAS, então `varrerPasta` as devolve como
-  // "ignoradas"): essas são falso-positivo aqui, porque já foram catalogadas
-  // acima — por isso ficam de fora do relatório de ignorados.
-  const nomesModulos = new Set(subpastas.map((d) => d.name));
-  const achadoRaiz = varrerPasta(absoluto, pasta);
-  for (const rel of achadoRaiz.ignorados) {
-    if (nomesModulos.has(basename(rel))) continue;
-    ignorados.push(rel);
-  }
-  const soltos: ItemBruto[] = [];
-  for (const it of achadoRaiz.itens) {
-    const nome = basename(it.relPath);
-    if (ehPessoal(nome) || ehLixoDeOrganizacao(nome)) { ignorados.push(it.relPath); continue; }
-    soltos.push(it);
-  }
-  if (soltos.length) {
-    const modId = Number(
-      novoModulo.run(cursoId, "ZZ", null, "Avulsos", ordenados.length).lastInsertRowid);
-    gravarItens(modId, soltos);
-  }
+  rodar();
 
   registrar(db, "info", "scan", `${pasta}: ${nItens} itens, ${nRecortes} pastas de recorte`);
   return { itens: nItens, recortes: nRecortes, ignorados };

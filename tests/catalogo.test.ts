@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { conectar } from "../src/db.ts";
+import { aplicarSync, conectar, lerProgresso } from "../src/db.ts";
 import { escanearCurso, ehPessoal, ehLixoDeOrganizacao } from "../src/scan.ts";
 
 const RAIZ = join(import.meta.dir, "__fixture-catalogo");
@@ -142,4 +142,48 @@ test("aula removida do disco some do catálogo no scan seguinte", () => {
   escanearCurso(db, join(RAIZ, "1-Curso"), 1);
   expect(itensDe(db, "1-curso").some((i: any) => i.titulo === "Aula")).toBe(false);
   writeFileSync(join(RAIZ, "1-Curso", "01-Modulo Um", "01.01-Aula.mp4"), "v"); // repõe
+});
+
+test("o id do item sobrevive a uma revarredura", () => {
+  const db = conectar(":memory:");
+  escanearCurso(db, join(RAIZ, "1-Curso"), 1);
+  const antes = db.query("SELECT id, rel_path FROM itens ORDER BY rel_path").all();
+  escanearCurso(db, join(RAIZ, "1-Curso"), 1);
+  const depois = db.query("SELECT id, rel_path FROM itens ORDER BY rel_path").all();
+  // É o contrato de que progresso e notas dependem: elas referenciam a aula
+  // por `i:<id>`, e o catálogo é reconstruído a cada scan.
+  expect(depois).toEqual(antes);
+});
+
+test("o progresso marcado sobrevive a uma revarredura", () => {
+  const db = conectar(":memory:");
+  escanearCurso(db, join(RAIZ, "1-Curso"), 1);
+  const item = db.query("SELECT id FROM itens WHERE tipo = 'video' LIMIT 1").get() as any;
+  aplicarSync(db, "chico", [{ tipo: "progresso", chave: `i:${item.id}`, segundos: 42, feito: true }]);
+
+  escanearCurso(db, join(RAIZ, "1-Curso"), 1);
+
+  const aindaExiste = db.query("SELECT id FROM itens WHERE id = ?").get(item.id);
+  expect(aindaExiste).toBeTruthy();
+  expect(lerProgresso(db, "chico")[`i:${item.id}`]).toEqual({ segundos: 42, feito: true });
+});
+
+test("a duração medida não é remedida na revarredura", () => {
+  const db = conectar(":memory:");
+  escanearCurso(db, join(RAIZ, "1-Curso"), 1);
+  // Carimba um valor impossível de o ffprobe produzir: se ele rodar de novo,
+  // o valor é substituído e o teste falha.
+  db.run("UPDATE itens SET duracao = 12345.678 WHERE tipo = 'video'");
+  escanearCurso(db, join(RAIZ, "1-Curso"), 1);
+  const d = db.query("SELECT duracao FROM itens WHERE tipo = 'video' LIMIT 1").get() as any;
+  expect(d.duracao).toBe(12345.678);
+});
+
+test("o estado de transcrição não é zerado pela revarredura", () => {
+  const db = conectar(":memory:");
+  escanearCurso(db, join(RAIZ, "1-Curso"), 1);
+  db.run("UPDATE itens SET transcricao_estado = 'pronto', tentativas = 3 WHERE tipo = 'video'");
+  escanearCurso(db, join(RAIZ, "1-Curso"), 1);
+  const r = db.query("SELECT transcricao_estado, tentativas FROM itens WHERE tipo = 'video' LIMIT 1").get() as any;
+  expect(r).toEqual({ transcricao_estado: "pronto", tentativas: 3 });
 });
