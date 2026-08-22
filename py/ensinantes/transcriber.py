@@ -1,8 +1,8 @@
 """Transcrição por GPU.
 
 Diferente do focus-scrap, aqui o Whisper é o caminho PADRÃO, não o fallback:
-não há legenda de produtor para aproveitar. Dos 232 vídeos do acervo, 159 nunca
-tiveram transcrição nenhuma, e os 73 que têm vieram de gerações diferentes ao
+não há legenda de produtor para aproveitar. Dos 231 vídeos do acervo, 159 nunca
+tiveram transcrição nenhuma, e os 72 que têm vieram de gerações diferentes ao
 longo de dois anos. O objetivo é uma passada uniforme com large-v3.
 
 Antes de escrever, a legenda vigente vai para `_transcricoes.antigas/`. A pasta
@@ -28,11 +28,19 @@ def _carregar_modelo():
 
 
 def hms(segundos: float, virgula: bool = True) -> str:
-    h, resto = divmod(max(0.0, segundos), 3600)
-    m, s = divmod(resto, 60)
-    milis = int(round((s - int(s)) * 1000))
+    """Segundos → `HH:MM:SS,mmm` (SRT) ou `HH:MM:SS.mmm` (fala cronometrada).
+
+    Converte para milissegundos inteiros ANTES de separar as unidades. Separar
+    primeiro e arredondar a fração depois faz 59,9996 s virar `00:00:59,1000`
+    — milissegundo de quatro dígitos, que não é SRT válido. Com 231 vídeos e
+    milhares de trechos cada, essa borda aparece.
+    """
+    total = round(max(0.0, segundos) * 1000)
+    h, resto = divmod(total, 3_600_000)
+    m, resto = divmod(resto, 60_000)
+    s, milis = divmod(resto, 1000)
     sep = "," if virgula else "."
-    return f"{int(h):02}:{int(m):02}:{int(s):02}{sep}{milis:03}"
+    return f"{int(h):02}:{int(m):02}:{int(s):02}{sep}{int(milis):03}"
 
 
 def escrever_saidas(trechos: list, destino_base: Path) -> None:
@@ -90,6 +98,7 @@ def processar(conn: sqlite3.Connection, item: sqlite3.Row, pipeline) -> None:
     video = config.ACERVO / item["rel_path"]
     if not video.exists():
         db.marcar(conn, item["id"], "erro", "vídeo não está no disco")
+        db.registrar(conn, "erro", "transcriber", f"{item['rel_path']}: vídeo não está no disco")
         return
 
     db.marcar(conn, item["id"], "rodando")

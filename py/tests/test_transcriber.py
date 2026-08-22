@@ -18,6 +18,23 @@ def test_hms_formata_srt_e_cronometrada():
     assert hms(-5) == "00:00:00,000"
 
 
+def test_hms_rola_para_o_segundo_seguinte_em_vez_de_gerar_4_digitos():
+    # Separar segundo e fração antes de arredondar produzia "00:00:59,1000",
+    # que não é SRT válido. Os tempos do faster-whisper são float.
+    assert hms(59.9996) == "00:01:00,000"
+    assert hms(3599.9996) == "01:00:00,000"
+    assert hms(0.9999) == "00:00:01,000"
+
+
+def test_hms_nunca_produz_milissegundo_de_quatro_digitos():
+    import random
+    random.seed(42)   # determinístico: um teste que falha às vezes não serve
+    for _ in range(2000):
+        t = random.uniform(0, 4000)
+        ms = hms(t).split(",")[1]
+        assert len(ms) == 3, f"{t} -> {hms(t)}"
+
+
 def test_escrever_saidas_produz_os_tres_formatos(tmp_path: Path):
     base = tmp_path / "Aula"
     escrever_saidas([Trecho(0.0, 2.0, " oi "), Trecho(2.0, 4.0, "tudo bem")], base)
