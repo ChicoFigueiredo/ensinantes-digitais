@@ -19,7 +19,7 @@
  */
 import type { Database } from "bun:sqlite";
 
-import { PAINEL_HOST, type Usuario } from "./config.ts";
+import { LIMIAR_PALAVRAS, LIMIAR_SIMILARIDADE, PAINEL_HOST, type Usuario } from "./config.ts";
 import {
   aplicarSync, lerNotas, lerPrefs, lerProgresso, registrar, tocarSessao, ultimoAberto, type OpSync,
 } from "./db.ts";
@@ -187,6 +187,18 @@ export async function montarResposta(db: Database, req: Request): Promise<Respon
       corpo.eventos = db.query(
         "SELECT at, nivel, origem, mensagem FROM eventos ORDER BY id DESC LIMIT 120").all();
       corpo.tarefas = estadoTarefas();
+      corpo.divergencias = db.query(`
+        SELECT id, titulo, comparacao FROM itens
+         WHERE comparacao IS NOT NULL ORDER BY id`).all()
+        .map((l: any) => ({ ...l, comparacao: JSON.parse(l.comparacao) }))
+        // O critério é o mesmo do lado Python (py/ensinantes/comparar.py,
+        // `divergente`). Duplicado de propósito: são dois processos, e um
+        // import cruzado entre eles custaria mais do que ganha.
+        .filter((l: any) =>
+          l.comparacao.palavras_nova < l.comparacao.palavras_antiga * LIMIAR_PALAVRAS ||
+          l.comparacao.similaridade < LIMIAR_SIMILARIDADE);
+      corpo.recortes = db.query(
+        "SELECT COUNT(*) pastas, SUM(arquivos) arquivos, SUM(bytes) bytes FROM recortes").get();
     }
     return Response.json(corpo);
   }

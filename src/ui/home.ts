@@ -89,6 +89,9 @@ async function pintarHome() {
           <h2>\${esc(retomar.item.titulo)}</h2>
           <div class="meta num">\${esc(retomar.curso.titulo)} · em \${relogio(retomar.segundos)}</div>
         </a></div>\` : ''}
+      \${cardsDeDono(d)}
     </main>\`;
+
+  ligarBotoesDeTarefa();
 }
 `;

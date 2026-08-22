@@ -137,3 +137,16 @@ test("a mesma rota entrega caminho e tamanho para o chico", async () => {
   expect(bruto).toContain("bytes");
   expect(bruto).toContain("relPath");
 });
+
+test("nenhum campo administrativo vaza para o procópio", async () => {
+  const proc = await (await pedir("/api/tudo?curso=c1", "procopio")).json();
+  for (const campo of ["disco", "fila", "eventos", "tarefas", "divergencias", "recortes"]) {
+    expect([campo, proc[campo]]).toEqual([campo, undefined]);
+  }
+});
+
+test("o texto da resposta ao procópio não contém caminho de disco", async () => {
+  const bruto = await (await pedir("/api/tudo?curso=c1", "procopio")).text();
+  expect(bruto).not.toContain("/mnt/");
+  expect(bruto).not.toContain(".mp4");
+});

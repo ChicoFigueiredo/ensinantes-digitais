@@ -172,3 +172,24 @@ export const CSS_TRANSCRICAO = `
 }
 .nota textarea:focus { outline: none; border-color: var(--ambar); }
 `;
+
+/**
+ * CSS dos cards de dono (Tarefa 16): disco, fila, recortes e divergências.
+ * Âmbar sinaliza alerta — o mesmo tom usado no resto do painel para "olhe
+ * aqui", sem introduzir uma cor nova só para isto.
+ */
+export const CSS_ADMIN = `
+.dono { margin-top: 44px; }
+.dono h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
+           color: var(--secundario); font-weight: 600; margin: 26px 0 12px; }
+.dono .cartao h2 { font-size: 22px; }
+.dono .cartao.alerta { border-color: var(--ambar); }
+.dono .ferramentas { display: flex; gap: 10px; flex-wrap: wrap; }
+
+table.divs { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.divs th { text-align: left; color: var(--secundario); font-weight: 600;
+                font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+                padding: 8px 10px; border-bottom: 1px solid var(--borda); }
+table.divs td { padding: 8px 10px; border-bottom: 1px solid var(--borda); }
+table.divs td.num, table.divs th:not(:first-child) { text-align: right; }
+`;

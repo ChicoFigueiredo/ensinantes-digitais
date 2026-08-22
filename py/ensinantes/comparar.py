@@ -52,6 +52,11 @@ def divergente(comp: dict) -> bool:
     Crescer NÃO é motivo de alarme por si: a passada nova com large-v3 pegando
     mais fala que uma transcrição velha é exatamente o resultado desejado. Só
     a similaridade baixa denuncia que o conteúdo mudou de verdade.
+
+    O mesmo critério está duplicado em src/painel.ts (rota `/api/tudo`, campo
+    `divergencias`). Duplicado de propósito: são dois processos, e um import
+    cruzado entre eles custaria mais do que ganha — mas os dois têm de dizer
+    a mesma coisa.
     """
     antiga = comp["palavras_antiga"]
     encolheu = antiga > 0 and comp["palavras_nova"] < antiga * config.LIMIAR_PALAVRAS
