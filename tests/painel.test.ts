@@ -2,7 +2,8 @@ import { beforeAll, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 
 import { conectar } from "../src/db.ts";
-import { montarResposta } from "../src/painel.ts";
+import { LIMIAR_PALAVRAS, LIMIAR_SIMILARIDADE } from "../src/config.ts";
+import { ehDivergente, montarResposta, type Comparacao } from "../src/painel.ts";
 
 let db: Database;
 
@@ -149,4 +150,57 @@ test("o texto da resposta ao procópio não contém caminho de disco", async () 
   const bruto = await (await pedir("/api/tudo?curso=c1", "procopio")).text();
   expect(bruto).not.toContain("/mnt/");
   expect(bruto).not.toContain(".mp4");
+});
+
+// --- ehDivergente (correção 1, rodada 1) ---------------------------------
+// O critério de divergência existe duplicado de propósito em duas
+// linguagens (aqui e em py/ensinantes/comparar.py, `divergente`), porque são
+// dois processos separados. Sem teste automatizado deste lado, um refactor
+// em `src/painel.ts` poderia quebrar o filtro em silêncio.
+
+test("ehDivergente segue o mesmo critério do lado Python", () => {
+  const limiarPalavras = 100 * LIMIAR_PALAVRAS; // 85, com LIMIAR_PALAVRAS = 0.85
+  const umAtomoAbaixo = limiarPalavras - Number.EPSILON * limiarPalavras;
+
+  const casos: [string, Comparacao, boolean][] = [
+    ["encolheu bem abaixo do limiar de palavras, similaridade alta", {
+      palavras_nova: 50, palavras_antiga: 100, palavras_unicas_antiga: 0, similaridade: 0.99,
+    }, true],
+
+    // Crescer sozinho nunca é divergência — uma passada nova pegando mais
+    // fala que a antiga é o resultado desejado, não um defeito.
+    ["cresceu (nova > antiga) com similaridade alta NÃO é divergência", {
+      palavras_nova: 150, palavras_antiga: 100, palavras_unicas_antiga: 0, similaridade: 0.99,
+    }, false],
+
+    // Caso real do acervo: "Criando o Seu Método de Ensino On-line" — cresceu
+    // (8661 contra 8356) E é divergente, mas pela similaridade (0,59), não
+    // pelo tamanho.
+    ["similaridade abaixo de 0,75 com tamanho quase igual — caso real do acervo", {
+      palavras_nova: 8661, palavras_antiga: 8356, palavras_unicas_antiga: 0, similaridade: 0.59,
+    }, true],
+
+    // 159 vídeos do acervo nunca tiveram legenda — `palavras_antiga = 0`.
+    ["sem legenda antiga (palavras_antiga = 0) nunca diverge por tamanho, qualquer que seja a nova", {
+      palavras_nova: 999, palavras_antiga: 0, palavras_unicas_antiga: 0, similaridade: 0.99,
+    }, false],
+    ["sem legenda antiga (palavras_antiga = 0) e zero palavras novas também não diverge", {
+      palavras_nova: 0, palavras_antiga: 0, palavras_unicas_antiga: 0, similaridade: 0.99,
+    }, false],
+
+    ["exatamente no limiar de palavras (antiga × 0,85) NÃO diverge", {
+      palavras_nova: limiarPalavras, palavras_antiga: 100, palavras_unicas_antiga: 0, similaridade: 0.99,
+    }, false],
+    ["um átomo abaixo do limiar de palavras já diverge", {
+      palavras_nova: umAtomoAbaixo, palavras_antiga: 100, palavras_unicas_antiga: 0, similaridade: 0.99,
+    }, true],
+
+    ["exatamente no limiar de similaridade (0,75) NÃO diverge", {
+      palavras_nova: 100, palavras_antiga: 100, palavras_unicas_antiga: 0, similaridade: LIMIAR_SIMILARIDADE,
+    }, false],
+  ];
+
+  for (const [nome, comparacao, esperado] of casos) {
+    expect([nome, ehDivergente(comparacao)]).toEqual([nome, esperado]);
+  }
 });

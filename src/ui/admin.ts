@@ -14,6 +14,7 @@ function cardsDeDono(d) {
 
   const fila = Object.fromEntries((d.fila || []).map(f => [f.estado, f.n]));
   const div = d.divergencias || [];
+  const recortes = d.disco?.recortes || {};
 
   return \`<section class="dono">
     <h3>Acervo</h3>
@@ -22,9 +23,9 @@ function cardsDeDono(d) {
         <div class="meta num">\${milhar(d.disco?.itens)} itens ·
           \${((d.disco?.segundos || 0) / 3600).toFixed(1).replace('.', ',')} h de vídeo</div></div>
 
-      <div class="cartao"><h2 class="num">\${gb(d.recortes?.bytes)}</h2>
-        <div class="meta num">\${milhar(d.recortes?.arquivos)} recortes em
-          \${milhar(d.recortes?.pastas)} pastas</div>
+      <div class="cartao"><h2 class="num">\${gb(recortes.bytes)}</h2>
+        <div class="meta num">\${milhar(recortes.arquivos)} recortes em
+          \${milhar(recortes.pastas)} pastas</div>
         <div class="meta">gere o script com "Refazer relatório"</div></div>
 
       <div class="cartao"><h2 class="num">\${milhar(fila.pronto || 0)} / \${milhar(

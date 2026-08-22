@@ -114,6 +114,32 @@ function fila(db: Database) {
                      FROM itens WHERE tipo = 'video' GROUP BY 1`).all();
 }
 
+export interface Comparacao {
+  palavras_nova: number;
+  palavras_antiga: number;
+  palavras_unicas_antiga: number;
+  similaridade: number;
+}
+
+/**
+ * Encolheu demais, ou mudou demais.
+ *
+ * Crescer NÃO é motivo de alarme por si: uma passada nova pegando mais fala
+ * que a transcrição velha é o resultado desejado. Só a similaridade baixa
+ * denuncia que o conteúdo mudou de verdade.
+ *
+ * O mesmo critério está duplicado no lado Python
+ * (py/ensinantes/comparar.py, `divergente`). Duplicado de propósito: são
+ * dois processos, e um import cruzado entre eles custaria mais do que ganha
+ * — mas os dois têm de dizer a mesma coisa.
+ */
+export function ehDivergente(comparacao: Comparacao): boolean {
+  const { palavras_antiga, palavras_nova, similaridade } = comparacao;
+  const encolheu = palavras_antiga > 0 && palavras_nova < palavras_antiga * LIMIAR_PALAVRAS;
+  const mudou = similaridade < LIMIAR_SIMILARIDADE;
+  return encolheu || mudou;
+}
+
 function itemPorId(db: Database, id: number) {
   return db.query<{ rel_path: string; srt_path: string | null; titulo: string }, [number]>(
     "SELECT rel_path, srt_path, titulo FROM itens WHERE id = ?").get(id);
@@ -187,18 +213,13 @@ export async function montarResposta(db: Database, req: Request): Promise<Respon
       corpo.eventos = db.query(
         "SELECT at, nivel, origem, mensagem FROM eventos ORDER BY id DESC LIMIT 120").all();
       corpo.tarefas = estadoTarefas();
+    }
+    if (pode.verDivergencias) {
       corpo.divergencias = db.query(`
         SELECT id, titulo, comparacao FROM itens
          WHERE comparacao IS NOT NULL ORDER BY id`).all()
         .map((l: any) => ({ ...l, comparacao: JSON.parse(l.comparacao) }))
-        // O critério é o mesmo do lado Python (py/ensinantes/comparar.py,
-        // `divergente`). Duplicado de propósito: são dois processos, e um
-        // import cruzado entre eles custaria mais do que ganha.
-        .filter((l: any) =>
-          l.comparacao.palavras_nova < l.comparacao.palavras_antiga * LIMIAR_PALAVRAS ||
-          l.comparacao.similaridade < LIMIAR_SIMILARIDADE);
-      corpo.recortes = db.query(
-        "SELECT COUNT(*) pastas, SUM(arquivos) arquivos, SUM(bytes) bytes FROM recortes").get();
+        .filter((l: any) => ehDivergente(l.comparacao));
     }
     return Response.json(corpo);
   }
