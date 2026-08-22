@@ -8,8 +8,43 @@
  * servidor confirma. Reenviar o mesmo lote é inofensivo: cada operação é
  * "deixe assim", nunca "some mais um".
  */
+/**
+ * A geração do palco: UM contador para todas as respostas em voo.
+ *
+ * O palco tem duas rotas assíncronas pintando dentro dele — `/api/markdown`
+ * (materiais.ts) e `/api/transcricao` (transcricao.ts) — e cada uma tinha seu
+ * próprio contador, que só se defendia contra si mesma. O que derruba a tela é
+ * a troca CRUZADA: abrir um `.md` grande, clicar numa aula em vídeo antes da
+ * resposta chegar, e ver o markdown do item anterior reescrever o palco por
+ * cima do `<video>` — com o botão "marcar como lido" ligado ao id ANTERIOR,
+ * enquanto a árvore à esquerda mostra a aula certa como corrente.
+ *
+ * Por isso a geração é uma só e é incrementada em `pintarPalco`: trocar de
+ * item invalida o que está em voo em QUALQUER rota, não só na rota que a
+ * pessoa está deixando. Isto é a terceira ocorrência da mesma família de
+ * defeito no projeto (closure velha em `ontimeupdate`, respostas de
+ * `/api/transcricao` fora de ordem) — as duas anteriores nasceram de guardas
+ * locais, cada uma cuidando do seu pedaço.
+ *
+ * A função é exportada e vai para o navegador por `toString()`, e não
+ * redigitada dentro da string: assim o que os testes exercitam é exatamente o
+ * que roda na página.
+ */
+export function criarGeracaoDoPalco() {
+  let geracao = 0;
+  return {
+    /** Uma troca de item. Tudo que saiu para a rede antes disto deixa de valer. */
+    nova: (): number => ++geracao,
+    /** A resposta que saiu na geração `g` ainda é a do que está na tela? */
+    vale: (g: number): boolean => g === geracao,
+  };
+}
+
 export const PLAYER_JS = `
 const FILA = 'ed.fila';
+
+// A MESMA função de src/ui/player.ts, não uma cópia manuscrita dela.
+const PALCO = (${criarGeracaoDoPalco.toString()})();
 
 function enfileirar(op) {
   const f = JSON.parse(localStorage.getItem(FILA) || '[]');
@@ -67,12 +102,17 @@ function pintarPalco() {
   // trocar evita áudio fantasma e um \`ontimeupdate\` órfão gravando progresso.
   document.getElementById('v')?.pause();
 
+  // Geração nova a cada repintura, ANTES de qualquer coisa: toda resposta que
+  // já estava em voo — markdown ou transcrição — perde a validade aqui, mesmo
+  // a de uma rota diferente da que a pessoa está deixando.
+  const geracao = PALCO.nova();
+
   if (!atual) { palco.innerHTML = '<div class="cabeca"><h2>Módulo sem material</h2></div>'; return; }
 
   // Markdown de Repo/ tem palco próprio (materiais.ts): sem vídeo, sem
   // velocidade, sem transcrição. Sai daqui antes de qualquer coisa que
   // pressuponha <video>.
-  if (atual.tipo === 'markdown') { pintarMarkdown(); return; }
+  if (atual.tipo === 'markdown') { pintarMarkdown(geracao); return; }
 
   // Capturado aqui, e não lido de \`atual\` dentro dos handlers: \`atual\` muda
   // assim que a pessoa clica em outra aula, e um handler que ainda esteja vivo
@@ -134,6 +174,6 @@ function pintarPalco() {
     });
   }
 
-  carregarTranscricao(item);
+  carregarTranscricao(item, geracao);
 }
 `;

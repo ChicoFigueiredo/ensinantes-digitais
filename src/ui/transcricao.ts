@@ -9,11 +9,6 @@ export const TRANSCRICAO_JS = `
 let trechos = [];
 let ativoAtual = -1;
 
-// Conta chamadas de carregarTranscricao. pintarPalco não espera esta função
-// terminar, e trocar de aula rápido dispara outra antes da primeira voltar da
-// rede — não há garantia de que as respostas cheguem na ordem em que saíram.
-let tokenTranscricao = 0;
-
 /**
  * Recebe \`item\` por parâmetro, e não lê \`atual\`: esta função roda depois de
  * um \`await\`, e nesse intervalo a pessoa pode ter trocado de aula. Ler
@@ -22,20 +17,22 @@ let tokenTranscricao = 0;
  *
  * Isso protege contra \`atual\` mudar, mas não contra uma resposta de rede
  * fora de ordem: abrir a aula A (lenta) e trocar rápido para B (rápida) pode
- * fazer a resposta de A chegar DEPOIS da de B já estar na tela. Sem o token
+ * fazer a resposta de A chegar DEPOIS da de B já estar na tela. Sem a guarda
  * abaixo, essa resposta atrasada sobrescreveria \`trechos\` com o array de A
  * e religaria o \`oninput\` da anotação — visível na tela como aula B, mas
- * gravando na chave de A. O token de sequência descarta qualquer resposta
- * que não seja mais a mais recente disparada.
+ * gravando na chave de A. Pior: se o palco tiver virado markdown nesse
+ * intervalo, \`alvo\` já é um nó solto e a linha do \`oninput\` estoura.
+ *
+ * \`geracao\` vem de \`pintarPalco\` (player.ts) e vale para o palco inteiro,
+ * não só para esta rota — trocar de item invalida markdown e transcrição de
+ * uma vez.
  */
-async function carregarTranscricao(item) {
+async function carregarTranscricao(item, geracao) {
   const alvo = document.getElementById('transcricao');
   if (!alvo || item?.tipo !== 'video') { trechos = []; ativoAtual = -1; return; }
 
-  const meuToken = ++tokenTranscricao;
-
   const d = await (await fetch('/api/transcricao?id=' + item.id)).json();
-  if (meuToken !== tokenTranscricao) return;   // chegou tarde: já não é a aula da tela
+  if (!PALCO.vale(geracao)) return;   // chegou tarde: o palco já é de outro item
 
   trechos = d.trechos || [];
   ativoAtual = -1;   // DOM novo: nenhum trecho está destacado ainda

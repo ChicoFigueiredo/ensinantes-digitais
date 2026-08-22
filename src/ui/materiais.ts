@@ -8,14 +8,13 @@
  * de escape que já causou página em branco em projeto parecido.
  */
 export const MATERIAIS_JS = `
-// Conta chamadas de pintarMarkdown, mesma ideia de tokenTranscricao em
-// transcricao.ts: trocar de material rápido pode fazer a resposta do
-// material ANTERIOR (mais lento) chegar depois da do atual já estar na
-// tela. Sem isto, essa resposta atrasada sobrescreveria o palco com o
-// markdown errado.
-let tokenMarkdown = 0;
-
-async function pintarMarkdown() {
+/**
+ * \`geracao\` vem de \`pintarPalco\` (player.ts) e é a MESMA que a transcrição
+ * recebe: um contador só para o palco inteiro. O contador próprio que existia
+ * aqui só se defendia de markdown -> markdown; markdown -> vídeo passava
+ * batido, e a resposta atrasada reescrevia o palco por cima do \`<video>\`.
+ */
+async function pintarMarkdown(geracao) {
   const palco = document.querySelector('.palco');
 
   // Capturado aqui, e não lido de \`atual\` depois do \`await\`: \`atual\` muda
@@ -24,10 +23,9 @@ async function pintarMarkdown() {
   // já teve em player.ts, e que \`pintarPalco\` evita capturando \`item\` no
   // topo.
   const item = atual;
-  const meuToken = ++tokenMarkdown;
 
   const d = await (await fetch('/api/markdown?id=' + item.id)).json();
-  if (meuToken !== tokenMarkdown) return; // chegou tarde: já não é o item da tela
+  if (!PALCO.vale(geracao)) return; // chegou tarde: o palco já é de outro item
 
   const p = dados.progresso[CHAVE(item.id)] || { segundos: 0, feito: false };
 
