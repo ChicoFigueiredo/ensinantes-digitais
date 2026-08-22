@@ -128,8 +128,12 @@ function pintarPalco() {
          \${item.temLegenda ? \`<track default kind="subtitles" srclang="pt" label="Português"
                                        src="/api/legenda?id=\${item.id}">\` : ''}
        </video>\`
-    : \`<div class="cabeca"><a class="cartao" href="/api/arquivo?id=\${item.id}" target="_blank">
-         Abrir \${esc(item.titulo)}</a></div>\`;
+    // Item de link (.url) abre o SITE. Sem isto o clique ia para
+    // /api/arquivo, que servia o próprio .url como octet-stream: 47 bytes de
+    // arquivo INI baixados em vez do site aberto, nos 12 links do acervo.
+    // \`rel="noopener"\` porque o destino é externo e abre em outra aba.
+    : \`<div class="cabeca"><a class="cartao" href="\${esc(item.alvo || '/api/arquivo?id=' + item.id)}"
+         target="_blank" rel="noopener">Abrir \${esc(item.titulo)}</a></div>\`;
 
   palco.innerHTML = midia + \`
     <div class="cabeca"><h2>\${esc(item.titulo)}</h2></div>

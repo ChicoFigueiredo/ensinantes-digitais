@@ -36,6 +36,8 @@ import { PAGINA } from "./ui/pagina.ts";
 export interface ItemArvore {
   id: number; tipo: string; codigo: string | null; titulo: string;
   duracao: number | null; temLegenda: boolean;
+  /** Endereço externo dos itens `.url` — ver `alvoExterno`. */
+  alvo?: string;
   /** Só para quem tem `verDisco` / `verCaminhos`. */
   bytes?: number; relPath?: string; estado?: string;
 }
@@ -49,8 +51,27 @@ interface LinhaArvore {
   curso_slug: string; curso_titulo: string; curso_estado: string;
   mod_codigo: string; mod_titulo: string; mod_pos: number;
   id: number | null; tipo: string | null; codigo: string | null; titulo: string | null;
-  duracao: number | null; bytes: number | null; rel_path: string | null;
+  duracao: number | null; bytes: number | null; rel_path: string | null; alvo: string | null;
   srt_path: string | null; transcricao_estado: string | null; pos: number | null;
+}
+
+/**
+ * O endereço que um item de link abre, ou `undefined`.
+ *
+ * Os 12 itens `.url` do acervo guardam a URL em `itens.alvo` desde o scan, mas
+ * nenhuma consulta a lia: o palco mandava o clique para `/api/arquivo`, que
+ * servia o `.url` cru — `application/octet-stream`, 47 bytes de INI baixados em
+ * vez do site aberto.
+ *
+ * Só `http`/`https` sai daqui. Um atalho pode apontar para `file:///E:/…`, e
+ * esse é um caminho de disco desta máquina — não vai para o convidado, e nem
+ * mesmo para o dono vale a pena, porque o navegador não abre `file:` a partir
+ * de uma página. Nesses casos o item cai no comportamento antigo (baixar o
+ * `.url`), que é feio mas não vaza nada.
+ */
+export function alvoExterno(alvo: string | null): string | undefined {
+  const limpo = alvo?.trim();
+  return limpo && /^https?:\/\//i.test(limpo) ? limpo : undefined;
 }
 
 /**
@@ -64,7 +85,7 @@ export function arvore(db: Database, usuario: Usuario, slug?: string): CursoArvo
   const linhas = db.query<LinhaArvore, [string | null, string | null]>(`
     SELECT c.slug curso_slug, c.titulo curso_titulo, c.estado curso_estado,
            m.codigo mod_codigo, m.titulo mod_titulo, m.posicao mod_pos,
-           i.id, i.tipo, i.codigo, i.titulo, i.duracao, i.bytes, i.rel_path,
+           i.id, i.tipo, i.codigo, i.titulo, i.duracao, i.bytes, i.rel_path, i.alvo,
            i.srt_path, i.transcricao_estado, i.posicao pos
       FROM cursos c
       JOIN modulos m ON m.curso_id = c.id
@@ -90,6 +111,8 @@ export function arvore(db: Database, usuario: Usuario, slug?: string): CursoArvo
       id: l.id, tipo: l.tipo!, codigo: l.codigo, titulo: l.titulo!,
       duracao: l.duracao, temLegenda: !!l.srt_path,
     };
+    // Endereço de site é conteúdo de curso, como o título: vai para os dois.
+    if (l.tipo === "link") item.alvo = alvoExterno(l.alvo);
     if (pode.verDisco) item.bytes = l.bytes ?? 0;
     if (pode.verCaminhos) item.relPath = l.rel_path ?? undefined;
     if (pode.verFila) item.estado = l.transcricao_estado ?? undefined;

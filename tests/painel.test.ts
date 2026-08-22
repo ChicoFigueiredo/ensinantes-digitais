@@ -5,7 +5,8 @@ import { join } from "node:path";
 
 import { conectar } from "../src/db.ts";
 import { ACERVO, LIMIAR_PALAVRAS, LIMIAR_SIMILARIDADE } from "../src/config.ts";
-import { ehDivergente, montarResposta, type Comparacao } from "../src/painel.ts";
+import { alvoExterno, ehDivergente, montarResposta, type Comparacao } from "../src/painel.ts";
+import { PAGINA } from "../src/ui/pagina.ts";
 
 let db: Database;
 
@@ -26,6 +27,13 @@ beforeAll(() => {
           VALUES (1,'video','01.01','Aula Um','1-Curso/01-Mod/01.01-Aula Um.mp4',0,1000,600,'1-Curso/01-Mod/01.01-Aula Um.srt','pronto')`);
   db.run(`INSERT INTO itens (modulo_id,tipo,codigo,titulo,rel_path,posicao,bytes)
           VALUES (1,'markdown','01.02','Nota Um','${MD_REL}',1,50)`);
+  // Os 12 itens .url do acervo: a URL fica em `itens.alvo` desde o scan.
+  db.run(`INSERT INTO itens (modulo_id,tipo,codigo,titulo,rel_path,posicao,bytes,alvo)
+          VALUES (1,'link','01.03','Gerador de Personas','1-Curso/01-Mod/01.03-Gerador.url',2,47,
+                  'https://interactive.rockcontent.com/br/gerador-de-personas')`);
+  db.run(`INSERT INTO itens (modulo_id,tipo,codigo,titulo,rel_path,posicao,bytes,alvo)
+          VALUES (1,'link','01.04','Atalho Local','1-Curso/01-Mod/01.04-Atalho.url',3,47,
+                  'file:///E:/Marketing/Ensinantes.Digitais/algo.pdf')`);
 });
 
 afterAll(() => rmSync(PASTA_MD, { recursive: true, force: true }));
@@ -108,6 +116,52 @@ test("o progresso que vem em /api/tudo é o do usuário que pediu", async () => 
 
 test("rota desconhecida devolve 404", async () => {
   expect((await pedir("/api/inexistente")).status).toBe(404);
+});
+
+// --- itens de link (Achado 5a da revisão final) ---------------------------
+// `itens.alvo` era gravado pelo scan e nunca lido por consulta nenhuma. O
+// palco mandava o clique para /api/arquivo, que servia o próprio `.url` como
+// octet-stream: os 12 links do acervo BAIXAVAM um INI de 47 bytes em vez de
+// abrir o site.
+
+const itensDe = async (usuario?: string) =>
+  (await (await pedir("/api/tudo?curso=c1", usuario)).json()).arvore[0].modulos[0].itens;
+
+test("item de link traz a URL do site, para os dois usuários", async () => {
+  for (const usuario of ["chico", "procopio"] as const) {
+    const link = (await itensDe(usuario)).find((i: any) => i.codigo === "01.03");
+    expect([usuario, link.alvo]).toEqual(
+      [usuario, "https://interactive.rockcontent.com/br/gerador-de-personas"]);
+  }
+});
+
+test("atalho que aponta para o disco não vira link: nem para o dono", async () => {
+  for (const usuario of ["chico", "procopio"] as const) {
+    const link = (await itensDe(usuario)).find((i: any) => i.codigo === "01.04");
+    expect([usuario, link.alvo]).toEqual([usuario, undefined]);
+  }
+  const bruto = await (await pedir("/api/tudo?curso=c1", "procopio")).text();
+  expect(bruto).not.toContain("file:///");
+  expect(bruto).not.toContain("/E:/");
+});
+
+test("item que não é link não ganha campo alvo", async () => {
+  const video = (await itensDe("chico")).find((i: any) => i.codigo === "01.01");
+  expect(video.alvo).toBeUndefined();
+});
+
+test("alvoExterno só deixa passar endereço de site", () => {
+  expect(alvoExterno("https://exemplo.com/x")).toBe("https://exemplo.com/x");
+  expect(alvoExterno("  http://exemplo.com  ")).toBe("http://exemplo.com");
+  expect(alvoExterno("file:///E:/algo.pdf")).toBeUndefined();
+  expect(alvoExterno("javascript:alert(1)")).toBeUndefined();
+  expect(alvoExterno("C:\\Users\\chico\\algo.txt")).toBeUndefined();
+  expect(alvoExterno(null)).toBeUndefined();
+  expect(alvoExterno("   ")).toBeUndefined();
+});
+
+test("o palco usa a URL do item de link em vez de /api/arquivo", () => {
+  expect(PAGINA).toContain("item.alvo || '/api/arquivo?id=' + item.id");
 });
 
 // --- /api/markdown (Tarefa 19) -------------------------------------------
