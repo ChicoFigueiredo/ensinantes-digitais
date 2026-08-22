@@ -53,9 +53,19 @@ export function srtParaVtt(srt: string): string {
   return `WEBVTT\n\n${corpo.trim()}\n`;
 }
 
-/** Formata segundos como `12:34` — rótulo do trecho na transcrição. */
+/**
+ * Formata segundos como `12:34` — rótulo do trecho na transcrição, duração da
+ * aula na árvore e o "em 12:34" de "continuar de onde parou".
+ *
+ * Roda no servidor e no navegador: `HOME_JS` embute esta função por
+ * `toString()`. Havia uma segunda implementação, manuscrita dentro da string —
+ * a testada era a morta, e a viva não tinha teste nenhum.
+ *
+ * `|| 0` porque no navegador ela recebe `duracao`, que é nula para item sem
+ * vídeo: sem isso o rótulo sairia "NaN:NaN".
+ */
 export function comoRelogio(segundos: number): string {
-  const s = Math.max(0, Math.floor(segundos));
+  const s = Math.max(0, Math.floor(segundos || 0));
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const r = s % 60;

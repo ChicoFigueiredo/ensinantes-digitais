@@ -7,7 +7,7 @@
  * Cada tarefa escreve no mesmo SQLite, então o progresso aparece na próxima
  * atualização da tela.
  */
-export interface Execucao { nome: string; iniciada: string; linhas: string[]; fim?: number }
+export interface Execucao { nome: string; iniciada: string; fim?: number }
 
 export const TAREFAS: Record<string, { rotulo: string; dica: string; cmd: string[] }> = {
   scan: {
@@ -42,7 +42,7 @@ export function disparar(nome: string): { ok: boolean; msg: string } {
   const t = TAREFAS[nome]!;
   if (emCurso.has(nome)) return { ok: false, msg: `${t.rotulo} já está rodando` };
 
-  const exec: Execucao = { nome, iniciada: new Date().toISOString(), linhas: [] };
+  const exec: Execucao = { nome, iniciada: new Date().toISOString() };
 
   let p;
   try {
@@ -57,13 +57,17 @@ export function disparar(nome: string): { ok: boolean; msg: string } {
   }
   emCurso.set(nome, exec);
 
+  // A saída vai para o terminal que subiu o painel — o mesmo lugar onde
+  // `revelar.ts` conta o que tentou. Antes ela era acumulada num array que
+  // `estadoTarefas` mandava em /api/tudo e que NENHUMA tela renderizava: carga
+  // morta, e a única parte da resposta que podia trazer caminho absoluto vindo
+  // do stdout do scan. Consumir os fluxos continua obrigatório de qualquer
+  // jeito: pipe cheio trava o processo filho.
   const consumir = async (fluxo: ReadableStream<Uint8Array>) => {
     for await (const pedaco of fluxo) {
       for (const linha of new TextDecoder().decode(pedaco).split("\n")) {
-        if (linha.trim()) exec.linhas.push(linha.slice(0, 200));
+        if (linha.trim()) console.log(`[${nome}] ${linha.slice(0, 200)}`);
       }
-      // Uma tarefa de horas produz muita linha; guardar tudo é vazamento lento.
-      if (exec.linhas.length > 400) exec.linhas.splice(0, exec.linhas.length - 400);
     }
   };
   consumir(p.stdout);
@@ -77,6 +81,5 @@ export function estadoTarefas() {
   return Object.entries(TAREFAS).map(([nome, t]) => ({
     nome, rotulo: t.rotulo, dica: t.dica,
     rodando: emCurso.has(nome) && emCurso.get(nome)!.fim === undefined,
-    linhas: emCurso.get(nome)?.linhas.slice(-12) ?? [],
   }));
 }

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as l from "../src/legenda.ts";
+import { PAGINA } from "../src/ui/pagina.ts";
 
 // Trecho fiel de um .srt gerado pelo pipeline.
 const SRT = `1
@@ -71,5 +72,23 @@ describe("comoRelogio", () => {
     expect(l.comoRelogio(95)).toBe("1:35");
     expect(l.comoRelogio(3723)).toBe("1:02:03");
     expect(l.comoRelogio(-5)).toBe("0:00");
+  });
+});
+
+// Achado 5 (revisão final): `comoRelogio` era importada só pelo teste. O
+// painel usava uma segunda implementação, manuscrita dentro de HOME_JS — a
+// testada estava morta e a viva não tinha teste. Agora é uma só.
+
+describe("comoRelogio é a função que roda na tela", () => {
+  test("HOME_JS embute esta função, e não uma cópia dela", () => {
+    expect(PAGINA).toContain(l.comoRelogio.toString());
+    expect(PAGINA).toContain("const relogio = comoRelogio;");
+  });
+
+  test("duração ausente vira 0:00, e não NaN:NaN", () => {
+    // No navegador ela recebe `item.duracao`, nulo para item sem vídeo.
+    expect(l.comoRelogio(undefined as unknown as number)).toBe("0:00");
+    expect(l.comoRelogio(NaN)).toBe("0:00");
+    expect(l.comoRelogio(0)).toBe("0:00");
   });
 });

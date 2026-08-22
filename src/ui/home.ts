@@ -5,13 +5,12 @@
  * em ~200 ms, e é isso que faz ele ser aberto no meio do estudo em vez de ser
  * levantado.
  */
+import { comoRelogio } from "../legenda.ts";
+
 export const HOME_JS = `
-function relogio(s) {
-  s = Math.max(0, Math.floor(s || 0));
-  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), r = s % 60;
-  const dd = n => String(n).padStart(2, '0');
-  return h ? h + ':' + dd(m) + ':' + dd(r) : m + ':' + dd(r);
-}
+// A MESMA função de src/legenda.ts, não uma cópia manuscrita dela.
+${comoRelogio.toString()}
+const relogio = comoRelogio;
 
 function horas(seg) {
   if (!seg) return '';

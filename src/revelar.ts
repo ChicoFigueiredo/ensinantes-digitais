@@ -38,15 +38,19 @@ export interface Execucao {
   erro: string;
 }
 
-/** Onde o painel registra o que tentou — alimentado a cada chamada. */
-export const diario: Execucao[] = [];
-
 /**
  * Roda um comando e REGISTRA tudo: linha executada, código, stdout e stderr.
  *
  * A versão anterior descartava as três coisas (`ignore` nos fluxos, `catch`
  * vazio) e devolvia só um número. Quando o Explorer não abria, não havia nada
  * para olhar — nem o comando, nem a reclamação do Windows.
+ *
+ * O registro é o console do painel, e só. Havia também um array `diario` em
+ * memória: nada em `src/`, `tests/` ou nas rotas o lia, e o `unshift` do
+ * `catch` não tinha o teto de 20 do caminho de sucesso — num WSL sem
+ * `powershell.exe` no PATH, cada clique em "mostrar na pasta" o fazia crescer
+ * num processo que fica de pé por dias. Diário que ninguém abre não é
+ * diagnóstico, é vazamento.
  */
 async function rodar(cmd: string[], opts: { cwd?: string } = {}): Promise<Execucao> {
   const linha = cmd.join(" ");
@@ -63,13 +67,10 @@ async function rodar(cmd: string[], opts: { cwd?: string } = {}): Promise<Execuc
     console.log(`[revelar] ${linha}`);
     console.log(`[revelar]   código=${r.codigo}` +
       (r.saida ? ` saída="${r.saida}"` : "") + (r.erro ? ` erro="${r.erro}"` : ""));
-    diario.unshift(r);
-    diario.length = Math.min(diario.length, 20);
     return r;
   } catch (e) {
     const r: Execucao = { cmd: linha, codigo: -1, saida: "", erro: String(e).slice(0, 400) };
     console.error(`[revelar] FALHOU ao executar: ${linha}\n[revelar]   ${r.erro}`);
-    diario.unshift(r);
     return r;
   }
 }

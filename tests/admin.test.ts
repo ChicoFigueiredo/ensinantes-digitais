@@ -91,3 +91,19 @@ test("exceção não tratada em qualquer rota vira 500 limpo, sem vazar fonte ne
     db.run = runOriginal;
   }
 });
+
+// --- Achado 5 (revisão final) -------------------------------------------
+// `estadoTarefas().linhas` mandava até 12 linhas do stdout da tarefa em
+// /api/tudo, e `src/ui/admin.ts` não renderizava `linhas` em lugar nenhum:
+// carga morta, e a única parte da resposta que podia trazer caminho absoluto
+// vindo do stdout do scan. A saída da tarefa vai para o terminal do painel.
+
+test("o estado das tarefas não carrega a saída do processo para o navegador", async () => {
+  for (const t of estadoTarefas()) {
+    expect([t.nome, Object.keys(t).sort()]).toEqual(
+      [t.nome, ["dica", "nome", "rodando", "rotulo"]]);
+  }
+  const bruto = await (await montarResposta(
+    db, new Request("http://x/api/tudo", { headers: { "X-Painel-Usuario": "chico" } }))).text();
+  expect(bruto).not.toContain("linhas");
+});
