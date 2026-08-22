@@ -8,7 +8,7 @@ from __future__ import annotations
 import sys
 import time
 
-from . import db
+from . import comparar, db
 from .transcriber import _carregar_modelo, processar
 
 
@@ -41,6 +41,13 @@ def main() -> int:
         processar(conn, item, pipeline)
 
     print(f"fim: {len(fila)} vídeos em {(time.monotonic() - inicio) / 60:.1f} min")
+
+    # O relatório de divergências é escrito AQUI, e não à mão depois: cada
+    # passada muda as comparações, e um relatório que só nasce quando alguém
+    # lembra de rodá-lo não vale como aviso.
+    caminho = comparar.escrever(conn)
+    comparados, divergentes = comparar.contar(conn)
+    print(f"{comparados} comparados · {divergentes} divergentes → {caminho}")
     return 0
 
 

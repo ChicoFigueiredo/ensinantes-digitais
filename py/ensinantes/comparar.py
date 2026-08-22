@@ -13,6 +13,7 @@ import json
 import re
 import sqlite3
 from difflib import SequenceMatcher
+from pathlib import Path
 
 from . import config, db
 
@@ -131,3 +132,52 @@ similaridade abaixo de {config.LIMIAR_SIMILARIDADE:.2f}.
 |---|---:|---:|---:|---:|---|
 {corpo}
 """
+
+
+def contar(conn: sqlite3.Connection) -> tuple[int, int]:
+    """(comparados, divergentes) — pelo MESMO `divergente()` do relatório.
+
+    Não relê o markdown nem reimplementa o critério: se o limiar mudar no
+    .env, os números impressos mudam junto com a tabela.
+    """
+    comparados = divergentes = 0
+    for linha in conn.execute("SELECT comparacao FROM itens WHERE comparacao IS NOT NULL"):
+        comparados += 1
+        try:
+            comp = json.loads(linha["comparacao"])
+        except (ValueError, TypeError):
+            continue
+        if divergente(comp):
+            divergentes += 1
+    return comparados, divergentes
+
+
+def escrever(conn: sqlite3.Connection) -> Path:
+    """Grava `relatorios/divergencias.md` e devolve o caminho.
+
+    Chamado pelo worker ao fim da fila e por `bun run src/cli.ts divergencias`.
+    Sem isto o relatório prometido pelo spec só nascia se alguém rodasse
+    Python à mão.
+    """
+    caminho = config.RELATORIOS / "divergencias.md"
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    caminho.write_text(relatorio_divergencias(conn), encoding="utf-8")
+    return caminho
+
+
+def main() -> int:
+    """`uv run python -m ensinantes.comparar` — o que o subcomando dispara."""
+    conn = db.conectar()
+    try:
+        caminho = escrever(conn)
+        comparados, divergentes = contar(conn)
+    finally:
+        conn.close()
+    print(f"{plural(comparados, 'vídeo comparado', 'vídeos comparados')} · "
+          f"{plural(divergentes, 'divergente', 'divergentes')}")
+    print(f"  {caminho}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

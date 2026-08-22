@@ -21,12 +21,13 @@ const AJUDA = `
 Uso: bun run src/cli.ts <comando>
 
 Comandos:
-  scan         escaneia o acervo e popula o catálogo (cursos, itens, recortes)
-  painel       destrava o banco e sobe o servidor do painel
-  transcrever  marca todos os vídeos como pendentes de transcrição
-  requeue      recoloca na fila os itens que erraram a transcrição
-  recortes     gera os recortes a partir das transcrições
-  status       mostra o catálogo por curso e a fila de transcrição
+  scan          escaneia o acervo e popula o catálogo (cursos, itens, recortes)
+  painel        destrava o banco e sobe o servidor do painel
+  transcrever   marca todos os vídeos como pendentes de transcrição
+  requeue       recoloca na fila os itens que erraram a transcrição
+  recortes      gera os recortes a partir das transcrições
+  divergencias  regrava relatorios/divergencias.md a partir do banco
+  status        mostra o catálogo por curso e a fila de transcrição
 `.trim();
 
 /** Imprime a ajuda e sai. Sem argumento sai limpo (0); comando desconhecido é erro (1). */
@@ -129,6 +130,36 @@ async function comandoRecortes() {
   console.log(`  ${r.relatorio}\n  ${r.script}  (não executado)`);
 }
 
+/**
+ * Roda o gerador Python e devolve o código de saída dele.
+ *
+ * Mesmo padrão de `src/tarefas.ts`: processo separado por `Bun.spawn`, porque
+ * o gerador é Python e mora no venv do `uv`. Aqui a saída é `inherit` — quem
+ * chamou está no terminal e quer ler os números na hora, não depois.
+ */
+async function rodarPython(modulo: string): Promise<number> {
+  const cmd = ["uv", "run", "python", "-m", modulo];
+  try {
+    const p = Bun.spawn(cmd, { stdout: "inherit", stderr: "inherit", stdin: "ignore" });
+    return await p.exited;
+  } catch (erro) {
+    // `Bun.spawn` LANÇA quando o binário não está no PATH — `uv`, numa máquina
+    // sem o ambiente Python montado. Erro claro, sem stack trace.
+    console.error(`não consegui rodar \`${cmd.join(" ")}\`: ${erro}`);
+    console.error("monte o ambiente Python com:  bun run setup:py");
+    return 1;
+  }
+}
+
+/**
+ * O relatório de divergências vem do Python porque o critério mora lá
+ * (`py/ensinantes/comparar.py`). Duplicá-lo em TS daria duas verdades.
+ */
+async function comandoDivergencias() {
+  const codigo = await rodarPython("ensinantes.comparar");
+  if (codigo !== 0) process.exit(codigo);
+}
+
 async function comandoStatus() {
   const db = await abrirBanco();
   // Esquema definido em src/db.ts (Tarefa 3): itens não tem curso_id — a
@@ -162,6 +193,8 @@ async function main() {
       return comandoRequeue();
     case "recortes":
       return comandoRecortes();
+    case "divergencias":
+      return comandoDivergencias();
     case "status":
       return comandoStatus();
     default:

@@ -3,10 +3,13 @@ import sqlite3
 
 import pytest
 
+from ensinantes import config
 from ensinantes.comparar import (
     avaliar,
     comparar_e_gravar,
+    contar,
     divergente,
+    escrever,
     normalizar,
     plural as comparar_plural,
     relatorio_divergencias,
@@ -225,3 +228,63 @@ def test_relatorio_no_singular_nao_diz_divergentes(conn):
     assert "**1 divergente**" in texto
     assert "1 divergentes" not in texto
     assert "1 vídeo comparado" in texto
+
+
+def _comparado(conn, id_: int, titulo: str, similaridade_: float, nova: int = 100) -> None:
+    conn.execute("INSERT INTO itens (id, titulo, rel_path, comparacao) VALUES (?, ?, ?, ?)",
+                 (id_, titulo, f"a/{id_}.mp4",
+                  json.dumps({"palavras_nova": nova, "palavras_antiga": 100,
+                              "palavras_unicas_antiga": 60, "similaridade": similaridade_})))
+    conn.commit()
+
+
+def test_escrever_grava_o_arquivo_no_lugar_prometido(conn, tmp_path, monkeypatch):
+    # O caminho vem de config.RELATORIOS — aqui apontado para tmp, senão o
+    # teste sobrescreveria o relatorios/divergencias.md de verdade.
+    monkeypatch.setattr(config, "RELATORIOS", tmp_path / "relatorios")
+    _comparado(conn, 1, "Aula OK", 0.99)
+    _comparado(conn, 2, "Aula Ruim", 0.20, nova=10)
+
+    caminho = escrever(conn)
+
+    assert caminho == tmp_path / "relatorios" / "divergencias.md"
+    texto = caminho.read_text(encoding="utf-8")
+    assert texto == relatorio_divergencias(conn)
+    assert "Aula Ruim" in texto
+
+
+def test_escrever_cria_a_pasta_de_relatorios_se_ela_nao_existir(conn, tmp_path, monkeypatch):
+    # Clone recém-feito não tem `relatorios/`: o worker não pode morrer no fim
+    # de duas horas de GPU por causa de uma pasta ausente.
+    monkeypatch.setattr(config, "RELATORIOS", tmp_path / "nao" / "existe")
+    assert escrever(conn).exists()
+
+
+def test_contar_usa_o_mesmo_criterio_do_relatorio(conn):
+    _comparado(conn, 1, "Aula OK", 0.99)
+    _comparado(conn, 2, "Aula Ruim", 0.20, nova=10)
+
+    texto = relatorio_divergencias(conn)
+    assert contar(conn) == (2, 1)
+    assert "2 vídeos comparados" in texto
+    assert "**1 divergente**" in texto
+
+
+def test_contar_ignora_quem_nunca_foi_comparado(conn):
+    _comparado(conn, 1, "Aula OK", 0.99)
+    conn.execute("INSERT INTO itens (id, titulo, rel_path, comparacao) VALUES "
+                 "(2, 'Aula Sem Antiga', 'a/2.mp4', NULL)")
+    conn.commit()
+
+    assert contar(conn) == (1, 0)
+
+
+def test_contar_nao_quebra_com_json_malformado(conn):
+    _comparado(conn, 1, "Aula Ruim", 0.20, nova=10)
+    conn.execute("INSERT INTO itens (id, titulo, rel_path, comparacao) VALUES "
+                 "(2, 'Lixo', 'a/2.mp4', 'isto não é json')")
+    conn.commit()
+
+    # O ilegível conta como comparado, mas não como divergente: chutar que
+    # divergiu inventaria alarme que ninguém pode conferir.
+    assert contar(conn) == (2, 1)

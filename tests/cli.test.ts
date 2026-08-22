@@ -62,3 +62,30 @@ test("erro de módulo ausente é reconhecido pelo texto, não por instanceof", (
   expect(ehErroDeModuloAusente({ message: "Failed to resolve './y.ts'" })).toBe(true);
   expect(ehErroDeModuloAusente(new Error("qualquer outra coisa"))).toBe(false);
 });
+
+test("a ajuda lista TODOS os subcomandos que o switch atende", async () => {
+  // A ajuda é escrita à mão e o switch cresce em outra parte do arquivo: nada
+  // além deste teste impede um subcomando novo de existir sem aparecer no
+  // `--help`. Lê o próprio fonte, e não a saída, para pegar o descasamento
+  // mesmo em subcomando que precisa de banco para rodar.
+  const fonte = await Bun.file(import.meta.dir + "/../src/cli.ts").text();
+  const casos = [...fonte.matchAll(/case "([a-z]+)":/g)].map((m) => m[1]!);
+  const { stdout } = await rodarCli();
+
+  expect(casos.length).toBeGreaterThan(0);
+  for (const caso of casos) expect(stdout).toContain(`  ${caso} `);
+});
+
+test("a ajuda não anuncia subcomando que o switch não atende", async () => {
+  const fonte = await Bun.file(import.meta.dir + "/../src/cli.ts").text();
+  const casos = new Set([...fonte.matchAll(/case "([a-z]+)":/g)].map((m) => m[1]!));
+  const { stdout } = await rodarCli();
+
+  const anunciados = stdout
+    .split("\n")
+    .map((l) => l.match(/^ {2}([a-z]+) {2,}\S/)?.[1])
+    .filter((n): n is string => Boolean(n));
+
+  expect(anunciados.length).toBe(casos.size);
+  for (const nome of anunciados) expect(casos.has(nome)).toBe(true);
+});

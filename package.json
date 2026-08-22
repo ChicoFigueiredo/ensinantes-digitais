@@ -9,6 +9,7 @@
     "painel": "bun run src/cli.ts painel",
     "transcrever": "bun run src/cli.ts transcrever",
     "recortes": "bun run src/cli.ts recortes",
+    "divergencias": "bun run src/cli.ts divergencias",
     "status": "bun run src/cli.ts status",
     "worker": "uv run python -m ensinantes.worker",
     "setup": "bun install && bun run setup:py",
