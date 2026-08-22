@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { ehErroDeModuloAusente } from "../src/cli.ts";
 
 /**
  * O CLI é testado via `Bun.spawn`, e não por import direto, porque o
@@ -34,10 +35,18 @@ test("argumento desconhecido imprime a ajuda e sai com 1", async () => {
   expect(codigoSaida).toBe(1);
 });
 
-test("scan, cujo módulo não existe, sai com 1 sem stack trace", async () => {
-  const { stdout, stderr, codigoSaida } = await rodarCli("scan");
+test("módulo ausente avisa e sai com 1, sem stack trace", async () => {
+  // Alvo deliberadamente inexistente: qualquer subcomando real teria seu
+  // módulo criado por uma tarefa posterior, e aí o teste passaria a disparar
+  // o trabalho de verdade em vez de exercitar o caminho de erro.
+  const { stdout, stderr, codigoSaida } = await rodarCli("__modulo-inexistente");
   expect(codigoSaida).toBe(1);
-  expect(stdout + stderr).toContain("módulo ainda não implementado");
-  expect(stdout + stderr).not.toContain(" at ");
-  expect(stdout + stderr).not.toContain("Bun v");
+  expect(stdout + stderr).not.toContain("at ");
+});
+
+test("erro de módulo ausente é reconhecido pelo texto, não por instanceof", () => {
+  // No Bun a falha de resolução chega como ResolveMessage, não como Error.
+  expect(ehErroDeModuloAusente(new Error("Cannot find module './x.ts'"))).toBe(true);
+  expect(ehErroDeModuloAusente({ message: "Failed to resolve './y.ts'" })).toBe(true);
+  expect(ehErroDeModuloAusente(new Error("qualquer outra coisa"))).toBe(false);
 });

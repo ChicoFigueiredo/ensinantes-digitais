@@ -41,15 +41,22 @@ function moduloAusente(caminho: string): never {
   process.exit(1);
 }
 
-function ehErroDeModuloAusente(erro: unknown): boolean {
+export function ehErroDeModuloAusente(erro: unknown): boolean {
   // No Bun, uma falha de resolução de módulo chega como `ResolveMessage`, não
   // como `Error` — por isso a checagem é pelo texto, não por `instanceof Error`.
-  const mensagem = erro instanceof Error ? erro.message : String(erro);
+  let mensagem = "";
+  if (erro instanceof Error) {
+    mensagem = erro.message;
+  } else if (erro && typeof erro === "object" && "message" in erro) {
+    mensagem = String((erro as Record<string, unknown>).message);
+  } else {
+    mensagem = String(erro);
+  }
   return /Cannot find module|Failed to resolve/.test(mensagem);
 }
 
 /** Importa um módulo pelo caminho; se ele ainda não existir, avisa e sai — sem stack trace. */
-async function importarModulo(caminho: string): Promise<any> {
+export async function importarModulo(caminho: string): Promise<any> {
   try {
     return await import(caminho);
   } catch (erro) {
@@ -60,8 +67,8 @@ async function importarModulo(caminho: string): Promise<any> {
 
 async function abrirBanco() {
   const caminhoDb = "./db.ts";
-  const { destravar } = await importarModulo(caminhoDb);
-  return destravar();
+  const { conectar } = await importarModulo(caminhoDb);
+  return conectar();
 }
 
 async function comandoScan() {
@@ -76,6 +83,9 @@ async function comandoScan() {
 
 async function comandoPainel() {
   const db = await abrirBanco();
+  const { destravar } = await importarModulo("./db.ts");
+  // 'rodando' depois de um reinício é processo morto, não trabalho em curso.
+  destravar(db);
   const caminhoPainel = "./painel.ts";
   const { servir } = await importarModulo(caminhoPainel);
   await servir(db, PAINEL_PORTA);
@@ -148,4 +158,4 @@ async function main() {
   }
 }
 
-main();
+if (import.meta.main) await main();
