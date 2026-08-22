@@ -130,6 +130,21 @@ export function lerProgresso(db: Database, usuario: Usuario): Record<string, Pro
   return Object.fromEntries(linhas.map((l) => [l.chave, { segundos: l.segundos, feito: !!l.feito }]));
 }
 
+/**
+ * A chave mais recentemente tocada que ainda não foi concluída — o que a home
+ * mostra em "continuar de onde parou".
+ *
+ * Fica aqui, e não no cliente, porque `lerProgresso` não devolve `updated_at`:
+ * mandar o timestamp de toda chave só para achar o máximo seria desperdício em
+ * cima de um dado que o SQLite ordena de graça.
+ */
+export function ultimoAberto(db: Database, usuario: Usuario): { chave: string; segundos: number } | null {
+  return db.query<{ chave: string; segundos: number }, [string]>(
+    `SELECT chave, segundos FROM progresso
+      WHERE usuario = ? AND feito = 0 AND segundos > 0
+      ORDER BY updated_at DESC, chave DESC LIMIT 1`).get(usuario) ?? null;
+}
+
 export function lerNotas(db: Database, usuario: Usuario): Record<string, string> {
   const linhas = db.query<{ chave: string; texto: string }, [string]>(
     "SELECT chave, texto FROM notas WHERE usuario = ?").all(usuario);

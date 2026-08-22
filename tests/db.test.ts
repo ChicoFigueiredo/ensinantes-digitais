@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { aplicarSync, conectar, lerNotas, lerPrefs, lerProgresso, outroOnline, tocarSessao } from "../src/db.ts";
+import { aplicarSync, conectar, lerNotas, lerPrefs, lerProgresso, outroOnline, tocarSessao, ultimoAberto } from "../src/db.ts";
 
 const novo = () => conectar(":memory:");
 
@@ -90,4 +90,23 @@ test("as consultas do cli.ts rodam contra o esquema de verdade", () => {
   expect(() => db.run(
     "UPDATE itens SET transcricao_estado='pendente', transcricao_erro=NULL WHERE transcricao_estado='erro'")
   ).not.toThrow();
+});
+
+test("ultimoAberto ignora o que já foi concluído", () => {
+  const db = novo();
+  aplicarSync(db, "chico", [{ tipo: "progresso", chave: "i:1", segundos: 10, feito: true }]);
+  expect(ultimoAberto(db, "chico")).toBeNull();
+});
+
+test("ultimoAberto ignora o que nunca foi tocado", () => {
+  const db = novo();
+  aplicarSync(db, "chico", [{ tipo: "progresso", chave: "i:1", segundos: 0, feito: false }]);
+  expect(ultimoAberto(db, "chico")).toBeNull();
+});
+
+test("ultimoAberto é por usuário", () => {
+  const db = novo();
+  aplicarSync(db, "procopio", [{ tipo: "progresso", chave: "i:5", segundos: 30, feito: false }]);
+  expect(ultimoAberto(db, "chico")).toBeNull();
+  expect(ultimoAberto(db, "procopio")).toEqual({ chave: "i:5", segundos: 30 });
 });

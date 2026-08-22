@@ -21,7 +21,7 @@ import type { Database } from "bun:sqlite";
 
 import { PAINEL_HOST, type Usuario } from "./config.ts";
 import {
-  aplicarSync, lerNotas, lerPrefs, lerProgresso, tocarSessao, type OpSync,
+  aplicarSync, lerNotas, lerPrefs, lerProgresso, tocarSessao, ultimoAberto, type OpSync,
 } from "./db.ts";
 import { dentroDoAcervo, servirArquivo } from "./arquivos.ts";
 import { lerTrechos, srtParaVtt } from "./legenda.ts";
@@ -174,6 +174,7 @@ export async function montarResposta(db: Database, req: Request): Promise<Respon
       progresso: lerProgresso(db, usuario),
       notas: lerNotas(db, usuario),
       prefs: lerPrefs(db, usuario),
+      retomar: ultimoAberto(db, usuario),
     };
     // Nada de card de disco, fila ou evento para quem não pode vê-los: a chave
     // simplesmente não existe na resposta.
