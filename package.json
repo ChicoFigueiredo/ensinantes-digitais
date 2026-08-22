@@ -11,6 +11,7 @@
     "recortes": "bun run src/cli.ts recortes",
     "divergencias": "bun run src/cli.ts divergencias",
     "status": "bun run src/cli.ts status",
+    "backup": "bun run src/cli.ts backup",
     "worker": "uv run python -m ensinantes.worker",
     "setup": "bun install && bun run setup:py",
     "setup:py": "uv venv --system-site-packages && uv sync",

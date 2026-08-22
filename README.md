@@ -72,6 +72,7 @@ desconhecido, imprime a mesma ajuda e sai com 1.
 | `recortes` | `bun run recortes` | Refaz o relatório de recortes e o script de limpeza, a partir do banco. Não apaga nada e não varre o disco. |
 | `divergencias` | `bun run divergencias` | Regrava `relatorios/divergencias.md` e imprime quantos vídeos foram comparados e quantos divergiram. |
 | `status` | `bun run status` | Duas tabelas: catálogo por curso e fila de transcrição. |
+| `backup` | `bun run backup` | Copia o `ensinantes.db` para dentro do acervo. O painel já faz isso sozinho ao subir e a cada 30 min; este comando é para forçar na hora. |
 | — | `bun run worker` | O laço da transcrição (`uv run python -m ensinantes.worker`). Horas de GPU. |
 | — | `bun test` / `bun run typecheck` | Testes e checagem de tipos. |
 
