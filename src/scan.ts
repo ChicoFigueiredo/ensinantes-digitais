@@ -76,15 +76,42 @@ export function ehRecorte(entradas: Dirent[]): boolean {
   return png;
 }
 
-/** Conta e soma sem descer em subpasta: recorte é plano por construção. */
-function medirRecorte(absoluto: string, entradas: Dirent[]): { arquivos: number; bytes: number } {
-  let arquivos = 0, bytes = 0;
-  for (const e of entradas) {
-    if (!e.isFile()) continue;
-    arquivos++;
-    bytes += statSync(join(absoluto, e.name)).size;
+/** Conta sem medir: o byte sai depois, numa passada só (ver `medirRecortes`). */
+function contarRecorte(entradas: Dirent[]): number {
+  let n = 0;
+  for (const e of entradas) if (e.isFile()) n++;
+  return n;
+}
+
+/**
+ * Mede os bytes de várias pastas de recorte numa ÚNICA chamada ao `find`.
+ *
+ * Medir com `statSync` arquivo a arquivo custa ~17 min para os 172.004 PNGs do
+ * acervo: cada chamada é um round-trip de 3-6 ms sobre drvfs, o filesystem do
+ * WSL para /mnt/e. Um `find` só, com a lista inteira de pastas, faz o mesmo
+ * trabalho em ~93 s porque o percurso acontece de um lado só da fronteira.
+ *
+ * As pastas de recorte são planas por construção, daí o `-maxdepth 1`.
+ *
+ * Devolve um mapa de caminho absoluto → bytes. Pasta ausente do mapa é pasta
+ * que o `find` não conseguiu ler — quem chama decide o que fazer.
+ */
+export function medirRecortes(pastasAbsolutas: string[]): Map<string, number> {
+  const medido = new Map<string, number>();
+  if (!pastasAbsolutas.length) return medido;
+
+  const p = Bun.spawnSync([
+    "find", ...pastasAbsolutas, "-maxdepth", "1", "-type", "f", "-printf", "%h\\t%s\\n",
+  ]);
+  if (p.exitCode !== 0) return medido;   // sem `find`: quem chama fica com 0
+
+  for (const linha of new TextDecoder().decode(p.stdout).split("\n")) {
+    if (!linha) continue;
+    const [dir, tamanho] = linha.split("\t");
+    if (!dir || !tamanho) continue;
+    medido.set(dir, (medido.get(dir) ?? 0) + Number(tamanho));
   }
-  return { arquivos, bytes };
+  return medido;
 }
 
 /** `[InternetShortcut]\nURL=…` — atalho do Windows. */
@@ -123,7 +150,9 @@ export function varrerPasta(absoluto: string, relativo: string): Achado {
       if (PASTAS_IGNORADAS.has(e.name)) { ignorados.push(rel); continue; }
       const dentro = readdirSync(join(absoluto, e.name), { withFileTypes: true });
       if (ehRecorte(dentro)) {
-        recortes.push({ relPath: rel, ...medirRecorte(join(absoluto, e.name), dentro) });
+        // bytes fica em 0 de propósito: medir arquivo a arquivo aqui custa
+        // 17 min sobre drvfs. Quem mede é `medirRecortes`, numa chamada só.
+        recortes.push({ relPath: rel, arquivos: contarRecorte(dentro), bytes: 0 });
       } else {
         ignorados.push(rel);
       }

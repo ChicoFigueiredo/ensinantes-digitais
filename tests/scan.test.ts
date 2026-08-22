@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { tipoDe, varrerPasta } from "../src/scan.ts";
+import { medirRecortes, tipoDe, varrerPasta } from "../src/scan.ts";
 
 const RAIZ = join(import.meta.dir, "__fixture-scan");
 
@@ -107,4 +107,23 @@ test("os sidecars não viram itens por conta própria", () => {
   // 01.01 e 01.02 (vídeos) + apostila + planilha + atalho. Os sidecars .srt,
   // .txt e -Fala.Cronometrada.txt não contam: aparecem amarrados ao vídeo.
   expect(r.itens).toHaveLength(5);
+});
+
+test("varrerPasta conta os arquivos de recorte mas deixa os bytes em zero", () => {
+  const r = varrerPasta(join(RAIZ, "01-Modulo Um"), "01-Modulo Um");
+  const um = r.recortes.find((x) => x.relPath.endsWith("01.01-Aula Um"))!;
+  expect(um.arquivos).toBe(5);
+  expect(um.bytes).toBe(0); // medido depois, por medirRecortes
+});
+
+test("medirRecortes soma os bytes de várias pastas numa chamada só", () => {
+  const a = join(RAIZ, "01-Modulo Um", "01.01-Aula Um");
+  const b = join(RAIZ, "01-Modulo Um", "Aula 3 - Atraindo Alunos 720 x 1280");
+  const m = medirRecortes([a, b]);
+  expect(m.get(a)).toBe(5 * "png".length); // 5 arquivos de 3 bytes
+  expect(m.get(b)).toBe(3 * "png".length); // 3 arquivos de 3 bytes
+});
+
+test("medirRecortes com lista vazia não chama nada e devolve mapa vazio", () => {
+  expect(medirRecortes([]).size).toBe(0);
 });
