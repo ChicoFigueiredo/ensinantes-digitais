@@ -18,6 +18,9 @@ function horas(seg) {
   return (seg / 3600).toFixed(1).replace('.', ',') + ' h';
 }
 
+/** "1 módulo" / "2 módulos" — plural que não erra no singular. */
+const plural = (n, singular, plural) => n + ' ' + (n === 1 ? singular : plural);
+
 /** Quanto do curso o usuário já marcou como feito. */
 function progressoDoCurso(curso, progresso) {
   let total = 0, feitos = 0;
@@ -37,8 +40,8 @@ function cartaoDeCurso(curso, progresso) {
 
   return \`<a class="cartao \${vazio ? 'vazio' : ''}" href="/curso/\${curso.slug}">
     <h2>\${esc(curso.titulo)}</h2>
-    <div class="meta num">\${curso.modulos.length} módulos ·
-      \${vazio ? 'não baixado' : aulas + ' itens'}\${seg ? ' · ' + horas(seg) : ''}</div>
+    <div class="meta num">\${plural(curso.modulos.length, 'módulo', 'módulos')} ·
+      \${vazio ? 'não baixado' : plural(aulas, 'item', 'itens')}\${seg ? ' · ' + horas(seg) : ''}</div>
     <div class="barra \${p.pct === 100 ? 'pronta' : ''}"><i style="width:\${p.pct}%"></i></div>
     <div class="meta num" style="margin-top:6px">\${vazio ? '—' : p.feitos + ' de ' + p.total + ' · ' + p.pct + '%'}</div>
   </a>\`;

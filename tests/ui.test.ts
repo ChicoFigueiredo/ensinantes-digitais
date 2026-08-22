@@ -21,3 +21,8 @@ test("o HTML é válido o bastante para o parser não abortar", () => {
   const aspas = (PAGINA.match(/"/g) ?? []).length;
   expect(aspas % 2).toBe(0);
 });
+
+test("o plural não erra no singular", () => {
+  // "1 módulos" apareceu no cartão Materiais, que tem exatamente um.
+  expect(PAGINA).toContain("n === 1 ? singular : plural");
+});
