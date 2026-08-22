@@ -1,5 +1,7 @@
-import { CSS } from "./tema.ts";
+import { CSS, CSS_CURSO } from "./tema.ts";
 import { HOME_JS } from "./home.ts";
+import { PLAYER_JS } from "./player.ts";
+import { CURSO_JS } from "./curso.ts";
 
 /**
  * A página inteira, servida tanto em `/` quanto em `/curso/<slug>`.
@@ -14,15 +16,17 @@ export const PAGINA = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ensinantes Digitais</title>
-<style>${CSS}</style>
+<style>${CSS}${CSS_CURSO}</style>
 </head>
 <body>
 <div id="app">carregando…</div>
 <script>
 ${HOME_JS}
-// A tela de curso entra na Tarefa 11, junto com o import de CURSO_JS e o
-// desvio por location.pathname. Aqui a home é a única tela que existe.
-const rota = () => pintarHome();
+${PLAYER_JS}
+${CURSO_JS}
+const rota = () => location.pathname.startsWith('/curso/')
+  ? pintarCurso(decodeURIComponent(location.pathname.slice('/curso/'.length)))
+  : pintarHome();
 addEventListener('popstate', rota);
 rota();
 </script>

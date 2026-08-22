@@ -85,3 +85,43 @@ main { padding: 24px 22px 64px; max-width: 1400px; margin: 0 auto; }
 
 @media (max-width: 640px) { main { padding: 16px 14px 48px; } }
 `;
+
+/**
+ * CSS da tela de curso: árvore de módulos à esquerda, palco à direita.
+ *
+ * Abaixo de 900px a árvore vira uma faixa acima do palco em vez de coluna
+ * lateral — não há espaço para as duas colunas num tablet em retrato.
+ */
+export const CSS_CURSO = `
+.curso { display: grid; grid-template-columns: 320px 1fr; gap: 0; height: calc(100vh - 55px); }
+
+.arvore { overflow-y: auto; border-right: 1px solid var(--borda); padding: 12px 0 40px; }
+.arvore .modulo > summary {
+  padding: 9px 18px; cursor: pointer; font-weight: 600; font-size: 14px;
+  list-style: none; display: flex; gap: 8px; align-items: baseline;
+}
+.arvore .modulo > summary::-webkit-details-marker { display: none; }
+.arvore .modulo > summary:hover { background: var(--superficie); }
+.arvore .modulo > summary .cod { color: var(--secundario); font-size: 12px; }
+.arvore .aula {
+  display: flex; gap: 9px; align-items: baseline;
+  padding: 7px 18px 7px 34px; font-size: 14px; cursor: pointer;
+  border-left: 2px solid transparent; color: var(--secundario);
+}
+.arvore .aula:hover { background: var(--superficie); color: var(--texto); }
+.arvore .aula.corrente { border-left-color: var(--ambar); color: var(--texto); background: var(--superficie); }
+.arvore .aula .marca { width: 12px; flex: none; }
+.arvore .aula.feita .marca { color: var(--verde); }
+.arvore .aula .dur { margin-left: auto; font-size: 12px; }
+
+.palco { overflow-y: auto; padding: 0 0 60px; }
+.palco video { width: 100%; background: #000; display: block; aspect-ratio: 16/9; }
+.palco .cabeca { padding: 16px 24px 8px; }
+.palco .cabeca h2 { margin: 0; font-size: 19px; font-weight: 600; }
+.palco .ferramentas { display: flex; gap: 10px; flex-wrap: wrap; padding: 8px 24px 16px; align-items: center; }
+
+@media (max-width: 900px) {
+  .curso { grid-template-columns: 1fr; height: auto; }
+  .arvore { border-right: 0; border-bottom: 1px solid var(--borda); max-height: 42vh; }
+}
+`;
