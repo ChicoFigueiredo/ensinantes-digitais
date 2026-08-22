@@ -1,0 +1,243 @@
+/**
+ * O painel — `bun run painel`, depois http://127.0.0.1:17789
+ *
+ * O roteamento vive em `montarResposta`, que recebe `Request` e devolve
+ * `Response` sem abrir porta nenhuma. É o que permite testar a matriz de
+ * permissões inteira em memória, sem subir servidor nem fingir rede.
+ *
+ * A ordem dentro de `montarResposta` importa: a checagem de rota
+ * administrativa vem ANTES de qualquer despacho. Uma rota nova que rode
+ * processo só precisa entrar em ROTAS_ADMIN para ficar protegida — não há como
+ * esquecer de proteger, só como esquecer de listar.
+ *
+ * A string usada para decidir QUAL handler roda e a string usada para checar
+ * SE ele pode rodar são a MESMA: `url.pathname`, sem normalização nenhuma
+ * depois. Duas normalizações diferentes — uma para rotear, outra para checar
+ * — é como um portão de permissão deixa de valer sem ninguém notar. Por isso
+ * nada aqui colapsa barras duplicadas, tira barra final ou mexe em caixa: uma
+ * rota que não bate exatamente com um `if` cai no 404, que é seguro.
+ */
+import type { Database } from "bun:sqlite";
+
+import { PAINEL_HOST, type Usuario } from "./config.ts";
+import {
+  aplicarSync, lerNotas, lerPrefs, lerProgresso, tocarSessao, type OpSync,
+} from "./db.ts";
+import { dentroDoAcervo, servirArquivo } from "./arquivos.ts";
+import { lerTrechos, srtParaVtt } from "./legenda.ts";
+import { ehRotaAdmin, indicadores, permissoesDe, quemE } from "./usuario.ts";
+import { PAGINA } from "./ui/pagina.ts";
+
+export interface ItemArvore {
+  id: number; tipo: string; codigo: string | null; titulo: string;
+  duracao: number | null; temLegenda: boolean;
+  /** Só para quem tem `verDisco` / `verCaminhos`. */
+  bytes?: number; relPath?: string; estado?: string;
+}
+
+export interface CursoArvore {
+  slug: string; titulo: string; estado: string;
+  modulos: { codigo: string; titulo: string; itens: ItemArvore[] }[];
+}
+
+interface LinhaArvore {
+  curso_slug: string; curso_titulo: string; curso_estado: string;
+  mod_codigo: string; mod_titulo: string; mod_pos: number;
+  id: number | null; tipo: string | null; codigo: string | null; titulo: string | null;
+  duracao: number | null; bytes: number | null; rel_path: string | null;
+  srt_path: string | null; transcricao_estado: string | null; pos: number | null;
+}
+
+/**
+ * Monta a árvore já FILTRADA pelo que o usuário pode ver.
+ *
+ * O filtro é aqui, no servidor, e não no CSS da página: o procópio não recebe
+ * os bytes nem o caminho, então nem o "ver código-fonte" os entrega.
+ */
+export function arvore(db: Database, usuario: Usuario, slug?: string): CursoArvore[] {
+  const pode = permissoesDe(usuario);
+  const linhas = db.query<LinhaArvore, [string | null, string | null]>(`
+    SELECT c.slug curso_slug, c.titulo curso_titulo, c.estado curso_estado,
+           m.codigo mod_codigo, m.titulo mod_titulo, m.posicao mod_pos,
+           i.id, i.tipo, i.codigo, i.titulo, i.duracao, i.bytes, i.rel_path,
+           i.srt_path, i.transcricao_estado, i.posicao pos
+      FROM cursos c
+      JOIN modulos m ON m.curso_id = c.id
+      LEFT JOIN itens i ON i.modulo_id = m.id
+     WHERE (?1 IS NULL OR c.slug = ?2)
+     ORDER BY c.posicao, m.posicao, i.posicao`).all(slug ?? null, slug ?? null);
+
+  const cursos = new Map<string, CursoArvore>();
+  for (const l of linhas) {
+    let c = cursos.get(l.curso_slug);
+    if (!c) {
+      c = { slug: l.curso_slug, titulo: l.curso_titulo, estado: l.curso_estado, modulos: [] };
+      cursos.set(l.curso_slug, c);
+    }
+    let m = c.modulos.at(-1);
+    if (!m || m.codigo !== l.mod_codigo) {
+      m = { codigo: l.mod_codigo, titulo: l.mod_titulo, itens: [] };
+      c.modulos.push(m);
+    }
+    if (l.id === null) continue;
+
+    const item: ItemArvore = {
+      id: l.id, tipo: l.tipo!, codigo: l.codigo, titulo: l.titulo!,
+      duracao: l.duracao, temLegenda: !!l.srt_path,
+    };
+    if (pode.verDisco) item.bytes = l.bytes ?? 0;
+    if (pode.verCaminhos) item.relPath = l.rel_path ?? undefined;
+    if (pode.verFila) item.estado = l.transcricao_estado ?? undefined;
+    m.itens.push(item);
+  }
+  return [...cursos.values()];
+}
+
+interface DiscoItens { itens: number; bytes: number | null; segundos: number | null }
+interface DiscoRecortes { pastas: number; arquivos: number | null; bytes: number | null }
+
+/** Números do acervo — só para quem tem `verDisco`. */
+function disco(db: Database) {
+  return {
+    ...db.query<DiscoItens, []>(`SELECT COUNT(*) itens, SUM(bytes) bytes, SUM(duracao) segundos FROM itens`).get(),
+    recortes: db.query<DiscoRecortes, []>(
+      `SELECT COUNT(*) pastas, SUM(arquivos) arquivos, SUM(bytes) bytes FROM recortes`).get(),
+  };
+}
+
+/** Estado da transcrição — só para quem tem `verFila`. */
+function fila(db: Database) {
+  return db.query(`SELECT transcricao_estado estado, COUNT(*) n
+                     FROM itens WHERE tipo = 'video' GROUP BY 1`).all();
+}
+
+function itemPorId(db: Database, id: number) {
+  return db.query<{ rel_path: string; srt_path: string | null; titulo: string }, [number]>(
+    "SELECT rel_path, srt_path, titulo FROM itens WHERE id = ?").get(id);
+}
+
+/**
+ * Lê a legenda de um item, com o caminho do banco reconferido contra o
+ * acervo antes de abrir o arquivo — a mesma trança que `servirArquivo` usa
+ * para o vídeo. O `srt_path` vem do banco, mas a checagem é barata e é a
+ * última linha antes de o processo abrir um arquivo.
+ */
+async function lerSrtDoItem(srtPath: string): Promise<string | null> {
+  const alvo = dentroDoAcervo(srtPath);
+  if (!alvo) return null;
+  return Bun.file(alvo).text();
+}
+
+export async function montarResposta(db: Database, req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  // Uma única string decide QUAL handler roda e SE ele pode rodar. Duas
+  // normalizações diferentes — uma para rotear, outra para checar — é como um
+  // portão de permissão deixa de valer sem ninguém notar.
+  const rota = url.pathname;
+  const usuario = quemE(req);
+  const pode = permissoesDe(usuario);
+
+  tocarSessao(db, usuario);
+
+  // Primeira tranca, antes de qualquer despacho. A segunda é o 403 do nginx.
+  if (ehRotaAdmin(rota) && !pode.admin) {
+    return Response.json({ ok: false, msg: "só o chico" }, { status: 403 });
+  }
+
+  if (rota === "/" || rota.startsWith("/curso/")) {
+    return new Response(PAGINA, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+  }
+
+  if (rota === "/api/eu") {
+    return Response.json({ usuario, permissoes: pode, indicadores: indicadores(db, usuario) });
+  }
+
+  if (rota === "/api/tudo") {
+    const slug = url.searchParams.get("curso") ?? undefined;
+    const corpo: Record<string, unknown> = {
+      usuario, permissoes: pode, indicadores: indicadores(db, usuario),
+      arvore: arvore(db, usuario, slug),
+      progresso: lerProgresso(db, usuario),
+      notas: lerNotas(db, usuario),
+      prefs: lerPrefs(db, usuario),
+    };
+    // Nada de card de disco, fila ou evento para quem não pode vê-los: a chave
+    // simplesmente não existe na resposta.
+    if (pode.verDisco) corpo.disco = disco(db);
+    if (pode.verFila) {
+      corpo.fila = fila(db);
+      corpo.eventos = db.query(
+        "SELECT at, nivel, origem, mensagem FROM eventos ORDER BY id DESC LIMIT 120").all();
+    }
+    return Response.json(corpo);
+  }
+
+  // Toda escrita do painel entra por aqui, em lote. O navegador enfileira no
+  // localStorage e só tira da fila o que este endpoint confirmar — é o que faz
+  // uma piscada do túnel deixar de engolir o que a pessoa marcou.
+  //
+  // NUNCA bloquear no nginx: sem ela o painel não fica somente-leitura, fica
+  // quebrado, com a fila enchendo para sempre.
+  if (rota === "/api/sync" && req.method === "POST") {
+    const corpo = (await req.json().catch(() => null)) as { ops?: OpSync[] } | null;
+    if (!corpo || !Array.isArray(corpo.ops)) {
+      return Response.json({ ok: false, msg: "fila inválida" }, { status: 400 });
+    }
+    const r = aplicarSync(db, usuario, corpo.ops);
+    return Response.json({
+      ok: true, ...r,
+      progresso: lerProgresso(db, usuario),
+      notas: lerNotas(db, usuario),
+      prefs: lerPrefs(db, usuario),
+    });
+  }
+
+  if (rota === "/api/video" || rota === "/api/arquivo") {
+    const item = itemPorId(db, Number(url.searchParams.get("id")));
+    if (!item) return new Response("não encontrado", { status: 404 });
+    return servirArquivo(item.rel_path, req);
+  }
+
+  if (rota === "/api/legenda") {
+    const item = itemPorId(db, Number(url.searchParams.get("id")));
+    if (!item?.srt_path) return new Response("sem legenda", { status: 404 });
+    const srt = await lerSrtDoItem(item.srt_path);
+    if (srt === null) return new Response("não encontrado", { status: 404 });
+    return new Response(srtParaVtt(srt), {
+      headers: { "Content-Type": "text/vtt; charset=utf-8" },
+    });
+  }
+
+  if (rota === "/api/transcricao") {
+    const item = itemPorId(db, Number(url.searchParams.get("id")));
+    if (!item?.srt_path) return Response.json({ trechos: [] });
+    const srt = await lerSrtDoItem(item.srt_path);
+    if (srt === null) return Response.json({ trechos: [] });
+    return Response.json({ titulo: item.titulo, trechos: lerTrechos(srt) });
+  }
+
+  return new Response("não encontrado", { status: 404 });
+}
+
+const TENTATIVAS_PORTA = 20;
+
+export function servir(db: Database, porta: number): void {
+  for (let p = porta; p < porta + TENTATIVAS_PORTA; p++) {
+    try {
+      if (p !== porta) console.log(`porta ${p - 1} em uso — tentando ${p}…`);
+      Bun.serve({ hostname: PAINEL_HOST, port: p, fetch: (req) => montarResposta(db, req) });
+      console.log(`painel em http://${PAINEL_HOST}:${p}`);
+      // A porta TEM de ser a 17789 para o túnel funcionar. Painel em outra
+      // porta = túnel entregando em porta vazia = 502 no tablet, e o terminal
+      // aqui parecendo normal.
+      if (p !== porta) console.warn(`ATENÇÃO: o túnel aponta para a ${porta}. De fora, isto será 502.`);
+      return;
+    } catch (e) {
+      if ((e as { code?: string })?.code === "EADDRINUSE") continue;
+      throw e;
+    }
+  }
+  console.error(`Nenhuma porta livre entre ${porta} e ${porta + TENTATIVAS_PORTA - 1}.`);
+  console.error(`  ver quem está:  ss -lptn 'sport = :${porta}'`);
+  process.exit(1);
+}
