@@ -123,6 +123,16 @@ export const CSS_CURSO = `
 .palco .cabeca h2 { margin: 0; font-size: 19px; font-weight: 600; }
 .palco .ferramentas { display: flex; gap: 10px; flex-wrap: wrap; padding: 8px 24px 16px; align-items: center; }
 
+/* A largura continua cheia, como a spec pede. O que muda é o teto de altura:
+   sem ele o vídeo come ~67% da viewport em telas largas, e o destaque
+   automático do trecho corrente (destacarTrecho, na Tarefa 12) acontece
+   fora de vista — o recurso existe e não é visto. Só acima de 900px: numa
+   tela estreita e alta o mesmo teto deixaria o vídeo minúsculo, então lá ele
+   segue só a largura (aspect-ratio acima cuida da altura). */
+@media (min-width: 901px) {
+  .palco video { max-height: 50vh; object-fit: contain; }
+}
+
 @media (max-width: 900px) {
   .curso { grid-template-columns: 1fr; height: auto; }
 
