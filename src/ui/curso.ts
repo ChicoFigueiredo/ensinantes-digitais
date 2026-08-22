@@ -17,9 +17,10 @@
  * listados do lado. Sem vídeo nenhum no curso, abre o primeiro item de
  * qualquer tipo.
  *
- * A mesma escolha existe, duplicada de propósito, dentro de `CURSO_JS`
- * abaixo: aquele roda no navegador e não pode importar esta função. Os dois
- * têm de dizer a mesma coisa.
+ * Esta função é a que roda no navegador: `CURSO_JS` a embute por `toString()`
+ * logo abaixo. Havia uma cópia manuscrita dela dentro da string, e os três
+ * testes daqui davam confiança sobre a versão que NÃO rodava — mudar a regra
+ * num lado e esquecer do outro passava verde.
  */
 export function escolherItemInicial<T extends { tipo: string }>(itens: T[]): T | null {
   return itens.find((i) => i.tipo === "video") ?? itens[0] ?? null;
@@ -27,6 +28,9 @@ export function escolherItemInicial<T extends { tipo: string }>(itens: T[]): T |
 
 export const CURSO_JS = `
 let dados = null, atual = null;
+
+// A MESMA função de src/ui/curso.ts, não uma cópia dela.
+${escolherItemInicial.toString()}
 
 const CHAVE = id => 'i:' + id;
 const feito = id => !!(dados?.progresso[CHAVE(id)]?.feito);
@@ -79,14 +83,12 @@ async function pintarCurso(slug) {
     </header>
     <div class="curso"><div class="arvore"></div><div class="palco"></div></div>\`;
 
-  // Retoma o que estava aberto, ou a primeira aula com vídeo — e, não
-  // havendo vídeo algum no curso (caso de Materiais/, só markdown), o
-  // primeiro item de qualquer tipo. Mesma escolha de \`escolherItemInicial\`
-  // em curso.ts, duplicada aqui porque este trecho roda no navegador.
+  // Retoma o que estava aberto, ou o que \`escolherItemInicial\` decidir: a
+  // primeira aula com vídeo e, não havendo vídeo algum no curso (caso de
+  // Materiais/, só markdown), o primeiro item de qualquer tipo.
   const alvo = Number((location.hash.match(/#i(\\d+)/) || [])[1]);
   const itens = curso.modulos.flatMap(m => m.itens);
-  const primeira = itens.find(i => i.tipo === 'video') || itens[0] || null;
-  atual = (alvo && itemPorId(alvo)) || primeira;
+  atual = (alvo && itemPorId(alvo)) || escolherItemInicial(itens);
 
   pintarArvore();
   pintarPalco();

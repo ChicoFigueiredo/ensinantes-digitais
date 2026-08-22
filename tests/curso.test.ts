@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { escolherItemInicial } from "../src/ui/curso.ts";
+import { PAGINA } from "../src/ui/pagina.ts";
 
 // Correção 1, rodada 1: a home entra num curso sem retomar nada (sem `#i` na
 // URL) escolhendo o primeiro vídeo. A seção "Materiais" (Repo/ do acervo,
@@ -21,4 +22,15 @@ test("curso sem vídeo nenhum abre no primeiro item, seja qual for o tipo", () =
 
 test("curso sem item nenhum não quebra: devolve null", () => {
   expect(escolherItemInicial([])).toBeNull();
+});
+
+// Achado 5 da revisão final: a função era testada e nunca chamada — o que
+// rodava no navegador era uma cópia manuscrita dentro de CURSO_JS, e os três
+// testes acima davam confiança sobre a versão errada.
+
+test("é esta função que vai para o navegador, não uma cópia dela", () => {
+  expect(PAGINA).toContain(escolherItemInicial.toString());
+  expect(PAGINA).toContain("escolherItemInicial(itens)");
+  // A cópia manuscrita que existia dentro da string.
+  expect(PAGINA).not.toContain("itens.find(i => i.tipo === 'video')");
 });
