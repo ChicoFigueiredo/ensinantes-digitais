@@ -117,6 +117,20 @@ function itemPorId(db: Database, id: number) {
 }
 
 /**
+ * Item pedido pela query `?id=`, ou `undefined`. O caminho sai do BANCO,
+ * nunca da URL — `id` só serve para achar a linha.
+ *
+ * `Number(null)` vira `0` e `Number("abc")` vira `NaN`, e os dois iriam para
+ * a consulta se não fossem barrados aqui: devolver `undefined` antes de
+ * consultar é mais honesto sobre "não tem id válido" do que deixar o SQL
+ * simplesmente não achar nada, e evita ida ao banco à toa.
+ */
+function itemPedido(db: Database, url: URL) {
+  const id = Number(url.searchParams.get("id"));
+  return Number.isInteger(id) && id > 0 ? itemPorId(db, id) : undefined;
+}
+
+/**
  * Lê a legenda de um item, com o caminho do banco reconferido contra o
  * acervo antes de abrir o arquivo — a mesma trança que `servirArquivo` usa
  * para o vídeo. O `srt_path` vem do banco, mas a checagem é barata e é a
@@ -193,13 +207,13 @@ export async function montarResposta(db: Database, req: Request): Promise<Respon
   }
 
   if (rota === "/api/video" || rota === "/api/arquivo") {
-    const item = itemPorId(db, Number(url.searchParams.get("id")));
+    const item = itemPedido(db, url);
     if (!item) return new Response("não encontrado", { status: 404 });
     return servirArquivo(item.rel_path, req);
   }
 
   if (rota === "/api/legenda") {
-    const item = itemPorId(db, Number(url.searchParams.get("id")));
+    const item = itemPedido(db, url);
     if (!item?.srt_path) return new Response("sem legenda", { status: 404 });
     const srt = await lerSrtDoItem(item.srt_path);
     if (srt === null) return new Response("não encontrado", { status: 404 });
@@ -209,7 +223,7 @@ export async function montarResposta(db: Database, req: Request): Promise<Respon
   }
 
   if (rota === "/api/transcricao") {
-    const item = itemPorId(db, Number(url.searchParams.get("id")));
+    const item = itemPedido(db, url);
     if (!item?.srt_path) return Response.json({ trechos: [] });
     const srt = await lerSrtDoItem(item.srt_path);
     if (srt === null) return Response.json({ trechos: [] });

@@ -115,3 +115,25 @@ test("query string não tira uma rota do conjunto administrativo", async () => {
   const r = await pedir("/api/run?nome=scan", "procopio", { method: "POST", body: "{}" });
   expect(r.status).toBe(403);
 });
+
+// Os testes acima conferem uma LISTA de chaves conhecidas (`bytes`, `relPath`,
+// `fila`, `eventos`, `disco`). Isso pega o que a gente lembrou de listar, mas
+// não pega um campo novo — acrescentado por uma tarefa futura — que carregue
+// caminho ou tamanho dentro de um objeto aninhado qualquer: ele passaria pela
+// lista porque ninguém o acrescentou a ela. Conferir o TEXTO bruto da resposta
+// pega esse caso, porque não depende de alguém lembrar de nomear o campo.
+
+test("o texto bruto da resposta ao procópio não vaza caminho nem tamanho", async () => {
+  const bruto = await (await pedir("/api/tudo?curso=c1", "procopio")).text();
+
+  for (const proibido of ["/mnt/", ".mp4", ".srt", "rel_path", "relPath", "bytes"]) {
+    expect([proibido, bruto.includes(proibido)]).toEqual([proibido, false]);
+  }
+});
+
+test("a mesma rota entrega caminho e tamanho para o chico", async () => {
+  const bruto = await (await pedir("/api/tudo?curso=c1", "chico")).text();
+  // O contraponto: sem ele, o teste acima passaria com uma resposta vazia.
+  expect(bruto).toContain("bytes");
+  expect(bruto).toContain("relPath");
+});
