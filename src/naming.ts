@@ -40,14 +40,20 @@ const COM_HIFEN = /^(B?\d+(?:\.\w{1,3})*)-/;
 const COM_PONTO = /^(B?\d+)\./;
 
 /**
- * Ponto e mais viram espaço só quando não há espaço no texto.
+ * `+` sempre vira espaço: ele nunca é caractere legítimo nestes títulos, só
+ * aparece onde um espaço foi codificado no download.
  *
- * `Mapa+do+Curso+On-line+(Completo)` → `Mapa do Curso On-line (Completo)`
- * `O Que Todo Ensinante Digital`     → intacto
+ * `.` continua condicionado a NÃO haver espaço no nome, porque ponto é
+ * legítimo em abreviação e sigla — converter sempre estragaria
+ * `02-O Que Todo Ensinante Digital` e afins.
+ *
+ * As duas regras precisam ser separadas por causa de nomes como
+ * `Mo_dulo+20+I+Aula+02_+E-book+…+Conexa_o (1)`, onde o ` (1)` do arquivo
+ * duplicado introduz um único espaço e desligaria a conversão inteira.
  */
 function humanizar(texto: string): string {
-  const temEspaco = /\s/.test(texto);
-  const t = temEspaco ? texto : texto.replace(/[.+]/g, " ");
+  const semMais = texto.replace(/\+/g, " ");
+  const t = /\s/.test(texto) ? semMais : semMais.replace(/\./g, " ");
   return t.replace(/\s+/g, " ").trim();
 }
 

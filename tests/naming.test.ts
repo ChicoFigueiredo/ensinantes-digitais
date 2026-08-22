@@ -79,6 +79,16 @@ test("linha vazia do lista.txt é descartada", () => {
   expect(lerLinhaLista("   \r")).toBeNull();
 });
 
+test("o mais vira espaço mesmo quando o nome já tem espaço", () => {
+  // Arquivo real do acervo: o ` (1)` de duplicata introduz um espaço que
+  // desligava a conversão inteira, deixando os + no título.
+  expect(lerItem("20.02-Mo_dulo+20+I+Aula+02_+E-book+-+10+Ideias+para+Conteu_do+de+Conexa_o (1).pdf"))
+    .toEqual({
+      codigo: "20.02",
+      titulo: "Mo_dulo 20 I Aula 02_ E-book - 10 Ideias para Conteu_do de Conexa_o (1)",
+    });
+});
+
 test("os sem código vão para o fim, e os numerados antes dos bônus", () => {
   const entrada = [
     { codigo: null, titulo: "Zebra" },
