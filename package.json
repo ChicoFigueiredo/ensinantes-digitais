@@ -11,7 +11,8 @@
     "recortes": "bun run src/cli.ts recortes",
     "status": "bun run src/cli.ts status",
     "worker": "uv run python -m ensinantes.worker",
-    "setup": "bun install && uv sync",
+    "setup": "bun install && bun run setup:py",
+    "setup:py": "uv venv --system-site-packages && uv sync",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },
