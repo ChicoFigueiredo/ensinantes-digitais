@@ -25,6 +25,9 @@ import {
 } from "./db.ts";
 import { dentroDoAcervo, servirArquivo } from "./arquivos.ts";
 import { lerTrechos, srtParaVtt } from "./legenda.ts";
+import { gerarRecortes } from "./recortes.ts";
+import { abrirNoSistema, revelar } from "./revelar.ts";
+import { disparar, estadoTarefas } from "./tarefas.ts";
 import { ehRotaAdmin, indicadores, permissoesDe, quemE } from "./usuario.ts";
 import { PAGINA } from "./ui/pagina.ts";
 
@@ -183,6 +186,7 @@ export async function montarResposta(db: Database, req: Request): Promise<Respon
       corpo.fila = fila(db);
       corpo.eventos = db.query(
         "SELECT at, nivel, origem, mensagem FROM eventos ORDER BY id DESC LIMIT 120").all();
+      corpo.tarefas = estadoTarefas();
     }
     return Response.json(corpo);
   }
@@ -229,6 +233,37 @@ export async function montarResposta(db: Database, req: Request): Promise<Respon
     const srt = await lerSrtDoItem(item.srt_path);
     if (srt === null) return Response.json({ trechos: [] });
     return Response.json({ titulo: item.titulo, trechos: lerTrechos(srt) });
+  }
+
+  // Daqui para baixo, só o chico chega: `ehRotaAdmin` já barrou o resto lá em
+  // cima. O que falta aqui é validar o pedido, não o pedinte.
+  if (rota === "/api/run" && req.method === "POST") {
+    const { nome } = (await req.json().catch(() => ({}))) as { nome?: string };
+    const r = disparar(String(nome));
+    return Response.json(r, { status: r.ok ? 200 : 400 });
+  }
+
+  if (rota === "/api/requeue" && req.method === "POST") {
+    const n = db.run(
+      "UPDATE itens SET transcricao_estado = 'pendente', transcricao_erro = NULL WHERE transcricao_estado = 'erro'").changes;
+    return Response.json({ ok: true, reenfileirados: n });
+  }
+
+  if ((rota === "/api/revelar" || rota === "/api/abrir") && req.method === "POST") {
+    const { id } = (await req.json().catch(() => ({}))) as { id?: number };
+    const item = itemPorId(db, Number(id));
+    // O caminho sai do BANCO, nunca da requisição: é o que impede uma URL
+    // forjada de virar "abra qualquer arquivo desta máquina".
+    if (!item) return Response.json({ ok: false, msg: "item não encontrado" }, { status: 404 });
+    const alvo = dentroDoAcervo(item.rel_path);
+    if (!alvo) return Response.json({ ok: false, msg: "fora do acervo" }, { status: 400 });
+    return Response.json(rota === "/api/revelar" ? await revelar(alvo) : await abrirNoSistema(alvo));
+  }
+
+  if (rota === "/api/limpeza" && req.method === "POST") {
+    // Só o relatório de recortes: o `fora-do-catalogo.md` depende dos
+    // `ignorados` que a varredura produz, e quem os tem é o `bun run scan`.
+    return Response.json({ ok: true, ...gerarRecortes(db) });
   }
 
   return new Response("não encontrado", { status: 404 });
