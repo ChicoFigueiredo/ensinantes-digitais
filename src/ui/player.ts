@@ -62,31 +62,41 @@ const VELOCIDADES = [0.75, 1, 1.25, 1.5, 1.75, 2];
 
 function pintarPalco() {
   const palco = document.querySelector('.palco');
+
+  // O <video> anterior continua tocando depois de sair do DOM — pausar antes de
+  // trocar evita áudio fantasma e um \`ontimeupdate\` órfão gravando progresso.
+  document.getElementById('v')?.pause();
+
   if (!atual) { palco.innerHTML = '<div class="cabeca"><h2>Módulo sem material</h2></div>'; return; }
 
-  const p = dados.progresso[CHAVE(atual.id)] || { segundos: 0, feito: false };
+  // Capturado aqui, e não lido de \`atual\` dentro dos handlers: \`atual\` muda
+  // assim que a pessoa clica em outra aula, e um handler que ainda esteja vivo
+  // gravaria o tempo DESTE vídeo na chave da aula NOVA.
+  const item = atual;
+
+  const p = dados.progresso[CHAVE(item.id)] || { segundos: 0, feito: false };
   const vel = Number(dados.prefs.velocidade || 1);
 
-  const midia = atual.tipo === 'video'
-    ? \`<video id="v" controls preload="metadata" src="/api/video?id=\${atual.id}"
-              \${atual.temLegenda ? '' : 'data-sem-legenda'}>
-         \${atual.temLegenda ? \`<track default kind="subtitles" srclang="pt" label="Português"
-                                       src="/api/legenda?id=\${atual.id}">\` : ''}
+  const midia = item.tipo === 'video'
+    ? \`<video id="v" controls preload="metadata" src="/api/video?id=\${item.id}"
+              \${item.temLegenda ? '' : 'data-sem-legenda'}>
+         \${item.temLegenda ? \`<track default kind="subtitles" srclang="pt" label="Português"
+                                       src="/api/legenda?id=\${item.id}">\` : ''}
        </video>\`
-    : \`<div class="cabeca"><a class="cartao" href="/api/arquivo?id=\${atual.id}" target="_blank">
-         Abrir \${esc(atual.titulo)}</a></div>\`;
+    : \`<div class="cabeca"><a class="cartao" href="/api/arquivo?id=\${item.id}" target="_blank">
+         Abrir \${esc(item.titulo)}</a></div>\`;
 
   palco.innerHTML = midia + \`
-    <div class="cabeca"><h2>\${esc(atual.titulo)}</h2></div>
+    <div class="cabeca"><h2>\${esc(item.titulo)}</h2></div>
     <div class="ferramentas">
       <button id="bFeito">\${p.feito ? '✓ visto' : 'marcar como visto'}</button>
-      \${atual.tipo === 'video' ? '<button id="bVel" class="num">' + vel + '×</button>' : ''}
-      \${dados.permissoes.verCaminhos && atual.relPath
+      \${item.tipo === 'video' ? '<button id="bVel" class="num">' + vel + '×</button>' : ''}
+      \${dados.permissoes.verCaminhos && item.relPath
         ? '<button id="bRevelar">mostrar na pasta</button>' : ''}
     </div>
     <div id="transcricao"></div>\`;
 
-  document.getElementById('bFeito').onclick = () => { marcar(atual.id, !feito(atual.id)); pintarPalco(); };
+  document.getElementById('bFeito').onclick = () => { marcar(item.id, !feito(item.id)); pintarPalco(); };
 
   const v = document.getElementById('v');
   if (v) {
@@ -99,10 +109,10 @@ function pintarPalco() {
     v.ontimeupdate = () => {
       if (v.currentTime - ultimo < 5) return;
       ultimo = v.currentTime;
-      enfileirar({ tipo: 'progresso', chave: CHAVE(atual.id), segundos: v.currentTime, feito: feito(atual.id) });
+      enfileirar({ tipo: 'progresso', chave: CHAVE(item.id), segundos: v.currentTime, feito: feito(item.id) });
       destacarTrecho(v.currentTime);
     };
-    v.onended = () => { marcar(atual.id, true); pintarPalco(); };
+    v.onended = () => { marcar(item.id, true); pintarPalco(); };
 
     const bVel = document.getElementById('bVel');
     if (bVel) bVel.onclick = () => {
@@ -115,7 +125,7 @@ function pintarPalco() {
     const bRev = document.getElementById('bRevelar');
     if (bRev) bRev.onclick = () => fetch('/api/revelar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: atual.id }),
+      body: JSON.stringify({ id: item.id }),
     });
   }
 

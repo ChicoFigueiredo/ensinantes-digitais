@@ -6,7 +6,7 @@
  * é uma atribuição de innerHTML sobre um nó pequeno.
  */
 export const CURSO_JS = `
-let dados = null, atual = null, slugAtual = null;
+let dados = null, atual = null;
 
 const CHAVE = id => 'i:' + id;
 const feito = id => !!(dados?.progresso[CHAVE(id)]?.feito);
@@ -39,15 +39,15 @@ function itemPorId(id) {
 }
 
 function abrir(id) {
-  atual = itemPorId(id);
-  if (!atual) return;
+  const alvo = itemPorId(id);
+  if (!alvo) return; // id desconhecido: não mexe em nada
+  atual = alvo;
   history.replaceState(null, '', '#i' + id);
   pintarArvore();
   pintarPalco();
 }
 
 async function pintarCurso(slug) {
-  slugAtual = slug;
   dados = await (await fetch('/api/tudo?curso=' + encodeURIComponent(slug))).json();
   const curso = dados.arvore[0];
 
