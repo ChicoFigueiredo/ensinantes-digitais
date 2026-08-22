@@ -104,7 +104,14 @@ def _texto_de_srt(conteudo: str) -> str:
             continue
         if "-->" in linha or _LINHA_INDICE.match(linha) or _LINHA_METADADO_VTT.match(linha):
             continue
-        falas.append(linha)
+        # SRT/VTT às vezes trazem <i>, <b>, <font color=...>. Sem tirar, o
+        # `normalizar` de comparar.py os transforma em tokens "i"/"b"/"font"
+        # que nunca batem com a transcrição nova — similaridade cai por
+        # artefato de formatação, e um vídeo bem transcrito vira divergência
+        # falsa. Nenhum arquivo do acervo tem tag hoje; isto é defesa.
+        linha = re.sub(r"<[^>]+>", "", linha).strip()
+        if linha:
+            falas.append(linha)
     return " ".join(falas)
 
 

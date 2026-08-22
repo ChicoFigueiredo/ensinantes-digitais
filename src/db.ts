@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS itens (
   transcricao_erro    TEXT,
   tentativas          INTEGER NOT NULL DEFAULT 0,
   transcrito_em       TEXT,
-  comparacao          TEXT                 -- JSON {palavras_nova, palavras_antiga, similaridade}
+  comparacao          TEXT                 -- JSON {palavras_nova, palavras_antiga, palavras_unicas_antiga, similaridade}
 );
 
 CREATE INDEX IF NOT EXISTS idx_itens_modulo ON itens(modulo_id);

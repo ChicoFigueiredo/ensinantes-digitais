@@ -14,7 +14,7 @@ import re
 import sqlite3
 from difflib import SequenceMatcher
 
-from . import config
+from . import config, db
 
 _NAO_PALAVRA = re.compile(r"[^\w\s]", re.UNICODE)
 
@@ -67,11 +67,10 @@ def comparar_e_gravar(conn: sqlite3.Connection, item: sqlite3.Row,
     conn.commit()
 
     if comp and divergente(comp):
-        conn.execute(
-            "INSERT INTO eventos (nivel, origem, mensagem) VALUES ('erro', 'comparar', ?)",
-            (f"{item['titulo']}: {comp['palavras_nova']} palavras contra "
-             f"{comp['palavras_antiga']}, similaridade {comp['similaridade']}",))
-        conn.commit()
+        db.registrar(
+            conn, "erro", "comparar",
+            f"{item['titulo']}: {comp['palavras_nova']} palavras contra "
+            f"{comp['palavras_antiga']}, similaridade {comp['similaridade']}")
 
 
 def relatorio_divergencias(conn: sqlite3.Connection) -> str:
@@ -80,8 +79,15 @@ def relatorio_divergencias(conn: sqlite3.Connection) -> str:
     ).fetchall()
 
     suspeitas = []
+    malformados = []
     for linha in linhas:
-        comp = json.loads(linha["comparacao"])
+        try:
+            comp = json.loads(linha["comparacao"])
+        except (ValueError, TypeError):
+            # Uma linha ruim não pode calar o relatório inteiro — ele existe
+            # justamente para nada passar em silêncio.
+            malformados.append(linha["titulo"])
+            continue
         if divergente(comp):
             suspeitas.append((linha, comp))
 
@@ -91,6 +97,11 @@ def relatorio_divergencias(conn: sqlite3.Connection) -> str:
         f"| {l['titulo']} | {c['palavras_nova']} | {c['palavras_antiga']} | "
         f"{c['palavras_unicas_antiga']} | {c['similaridade']:.2f} | `{l['rel_path']}` |"
         for l, c in suspeitas)
+
+    aviso_malformados = (
+        f"- **{len(malformados)} com `comparacao` ilegível:** "
+        + ", ".join(malformados) + "\n"
+        if malformados else f"- {len(malformados)} com `comparacao` ilegível\n")
 
     return f"""# Transcrições divergentes
 
@@ -105,7 +116,7 @@ similaridade abaixo de {config.LIMIAR_SIMILARIDADE:.2f}.
 
 - {len(linhas)} vídeos comparados
 - **{len(suspeitas)} divergentes**
-
+{aviso_malformados}
 | Aula | Palavras (nova) | Palavras (antiga) | Únicas (antiga) | Similaridade | Arquivo |
 |---|---:|---:|---:|---:|---|
 {corpo}

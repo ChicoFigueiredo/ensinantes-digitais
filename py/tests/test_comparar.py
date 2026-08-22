@@ -186,3 +186,21 @@ def test_relatorio_divergencias_lista_so_os_divergentes_ordenados(conn):
     assert "Aula Sem Antiga" not in texto
     # a mais divergente (menor similaridade) vem primeiro
     assert texto.index("Aula Pior") < texto.index("Aula Media")
+
+
+def test_relatorio_divergencias_nao_quebra_com_json_malformado(conn):
+    # Uma linha com `comparacao` ilegível não pode calar o relatório inteiro
+    # — ele existe justamente para nada passar em silêncio.
+    conn.execute("INSERT INTO itens (id, titulo, rel_path, comparacao) VALUES "
+                 "(1, 'Aula Ruim', 'a/1.mp4', 'isto não é json')")
+    conn.execute("INSERT INTO itens (id, titulo, rel_path, comparacao) VALUES "
+                 "(2, 'Aula Divergente', 'a/2.mp4', ?)",
+                 (json.dumps({"palavras_nova": 50, "palavras_antiga": 100,
+                              "palavras_unicas_antiga": 4, "similaridade": 0.50}),))
+    conn.commit()
+
+    texto = relatorio_divergencias(conn)
+
+    assert "Aula Divergente" in texto
+    assert "1 com `comparacao` ilegível" in texto
+    assert "Aula Ruim" in texto

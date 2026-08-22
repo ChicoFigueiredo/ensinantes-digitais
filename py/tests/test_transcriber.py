@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from ensinantes import config
-from ensinantes.transcriber import escrever_saidas, guardar_antigas, hms, texto_antigo
+from ensinantes.transcriber import _texto_de_srt, escrever_saidas, guardar_antigas, hms, texto_antigo
 
 
 class Trecho:
@@ -127,3 +127,12 @@ def test_texto_antigo_extrai_de_vtt_salvo_como_srt(tmp_path: Path):
 
 def test_texto_antigo_devolve_none_sem_backup(tmp_path: Path):
     assert texto_antigo(tmp_path / "Sozinha.mp4") is None
+
+
+def test_texto_de_srt_remove_marcacao_inline():
+    # Nenhum .srt do acervo tem tag hoje (medido: zero de 87). Defesa para o
+    # dia em que um vier marcado — sem isto, <i>/<b>/<font> viram tokens
+    # fantasma em normalizar() e derrubam a similaridade por artefato de
+    # formatação, não por conteúdo.
+    bruto = "1\n00:00:00,000 --> 00:00:02,000\n<i>Olá</i> <b>mundo</b>\n"
+    assert _texto_de_srt(bruto) == "Olá mundo"
