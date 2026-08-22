@@ -8,6 +8,7 @@ from ensinantes.comparar import (
     comparar_e_gravar,
     divergente,
     normalizar,
+    plural as comparar_plural,
     relatorio_divergencias,
     similaridade,
 )
@@ -202,5 +203,25 @@ def test_relatorio_divergencias_nao_quebra_com_json_malformado(conn):
     texto = relatorio_divergencias(conn)
 
     assert "Aula Divergente" in texto
-    assert "1 com `comparacao` ilegível" in texto
+    assert "1 item com `comparacao` ilegível" in texto
     assert "Aula Ruim" in texto
+
+
+def test_plural_concorda_com_o_numero():
+    """Um relatório que diz "1 divergentes" é lido como bug pelo dono."""
+    assert comparar_plural(0, "divergente", "divergentes") == "0 divergentes"
+    assert comparar_plural(1, "divergente", "divergentes") == "1 divergente"
+    assert comparar_plural(2, "divergente", "divergentes") == "2 divergentes"
+
+
+def test_relatorio_no_singular_nao_diz_divergentes(conn):
+    """O caso real do acervo: exatamente uma divergência entre 72 comparações."""
+    conn.execute("INSERT INTO itens (id, titulo, rel_path, comparacao) VALUES "
+                 "(1, 'Só essa', 'a/1.mp4', ?)",
+                 (json.dumps({"palavras_nova": 100, "palavras_antiga": 100,
+                              "palavras_unicas_antiga": 20, "similaridade": 0.10}),))
+    conn.commit()
+    texto = relatorio_divergencias(conn)
+    assert "**1 divergente**" in texto
+    assert "1 divergentes" not in texto
+    assert "1 vídeo comparado" in texto

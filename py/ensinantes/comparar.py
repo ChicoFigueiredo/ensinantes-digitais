@@ -19,6 +19,11 @@ from . import config, db
 _NAO_PALAVRA = re.compile(r"[^\w\s]", re.UNICODE)
 
 
+def plural(n: int, singular: str, plural_: str) -> str:
+    """"1 divergente" e "2 divergentes" — o relatório é lido por gente."""
+    return f"{n} {singular if n == 1 else plural_}"
+
+
 def normalizar(texto: str) -> list[str]:
     """Minúsculas, sem pontuação, espaço colapsado."""
     return _NAO_PALAVRA.sub(" ", texto.lower()).split()
@@ -104,9 +109,9 @@ def relatorio_divergencias(conn: sqlite3.Connection) -> str:
         for l, c in suspeitas)
 
     aviso_malformados = (
-        f"- **{len(malformados)} com `comparacao` ilegível:** "
+        f"- **{plural(len(malformados), 'item com', 'itens com')} `comparacao` ilegível:** "
         + ", ".join(malformados) + "\n"
-        if malformados else f"- {len(malformados)} com `comparacao` ilegível\n")
+        if malformados else f"- {plural(len(malformados), 'item com', 'itens com')} `comparacao` ilegível\n")
 
     return f"""# Transcrições divergentes
 
@@ -119,8 +124,8 @@ curta.
 Critério: menos de {config.LIMIAR_PALAVRAS:.0%} das palavras da anterior, **ou**
 similaridade abaixo de {config.LIMIAR_SIMILARIDADE:.2f}.
 
-- {len(linhas)} vídeos comparados
-- **{len(suspeitas)} divergentes**
+- {plural(len(linhas), 'vídeo comparado', 'vídeos comparados')}
+- **{plural(len(suspeitas), 'divergente', 'divergentes')}**
 {aviso_malformados}
 | Aula | Palavras (nova) | Palavras (antiga) | Únicas (antiga) | Similaridade | Arquivo |
 |---|---:|---:|---:|---:|---|
