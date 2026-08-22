@@ -35,13 +35,25 @@ test("argumento desconhecido imprime a ajuda e sai com 1", async () => {
   expect(codigoSaida).toBe(1);
 });
 
-test("módulo ausente avisa e sai com 1, sem stack trace", async () => {
-  // Alvo deliberadamente inexistente: qualquer subcomando real teria seu
-  // módulo criado por uma tarefa posterior, e aí o teste passaria a disparar
-  // o trabalho de verdade em vez de exercitar o caminho de erro.
-  const { stdout, stderr, codigoSaida } = await rodarCli("__modulo-inexistente");
-  expect(codigoSaida).toBe(1);
-  expect(stdout + stderr).not.toContain("at ");
+test("importarModulo avisa e sai com 1 quando o módulo não existe, sem stack trace", async () => {
+  // Chamado direto, e não por subcomando: todo subcomando real ganha seu módulo
+  // em alguma tarefa deste plano, e aí o teste passaria a disparar o trabalho de
+  // verdade. Este alvo não é um subcomando e nunca vai existir.
+  const p = Bun.spawn(
+    ["bun", "-e", 'const m = await import("./src/cli.ts"); await m.importarModulo("./__nunca-vai-existir.ts");'],
+    { cwd: import.meta.dir + "/..", stdout: "pipe", stderr: "pipe" },
+  );
+  const [saida, erro] = await Promise.all([
+    new Response(p.stdout).text(),
+    new Response(p.stderr).text(),
+  ]);
+  const codigo = await p.exited;
+
+  expect(codigo).toBe(1);
+  expect(saida + erro).toContain("módulo ainda não implementado");
+  expect(saida + erro).toContain("__nunca-vai-existir.ts");
+  // O ponto do caminho de erro é justamente NÃO despejar stack trace no usuário.
+  expect(saida + erro).not.toContain("    at ");
 });
 
 test("erro de módulo ausente é reconhecido pelo texto, não por instanceof", () => {

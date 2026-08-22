@@ -66,8 +66,7 @@ export async function importarModulo(caminho: string): Promise<any> {
 }
 
 async function abrirBanco() {
-  const caminhoDb = "./db.ts";
-  const { conectar } = await importarModulo(caminhoDb);
+  const { conectar } = await importarModulo("./db.ts");
   return conectar();
 }
 
@@ -82,8 +81,8 @@ async function comandoScan() {
 }
 
 async function comandoPainel() {
-  const db = await abrirBanco();
-  const { destravar } = await importarModulo("./db.ts");
+  const { conectar, destravar } = await importarModulo("./db.ts");
+  const db = conectar();
   // 'rodando' depois de um reinício é processo morto, não trabalho em curso.
   destravar(db);
   const caminhoPainel = "./painel.ts";
