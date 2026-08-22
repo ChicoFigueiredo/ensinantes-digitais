@@ -35,14 +35,27 @@ export const TAREFAS: Record<string, { rotulo: string; dica: string; cmd: string
 const emCurso = new Map<string, Execucao>();
 
 export function disparar(nome: string): { ok: boolean; msg: string } {
-  const t = TAREFAS[nome];
-  if (!t) return { ok: false, msg: `tarefa desconhecida: ${nome}` };
+  // `Object.hasOwn`, e não `TAREFAS[nome]`: num objeto literal comum,
+  // "constructor", "toString" e "__proto__" vêm da cadeia de protótipo e
+  // passariam por um `if (!t)`, chegando ao spawn com `cmd` indefinido.
+  if (!Object.hasOwn(TAREFAS, nome)) return { ok: false, msg: `tarefa desconhecida: ${nome}` };
+  const t = TAREFAS[nome]!;
   if (emCurso.has(nome)) return { ok: false, msg: `${t.rotulo} já está rodando` };
 
   const exec: Execucao = { nome, iniciada: new Date().toISOString(), linhas: [] };
-  emCurso.set(nome, exec);
 
-  const p = Bun.spawn(t.cmd, { stdout: "pipe", stderr: "pipe", stdin: "ignore" });
+  let p;
+  try {
+    p = Bun.spawn(t.cmd, { stdout: "pipe", stderr: "pipe", stdin: "ignore" });
+  } catch (e) {
+    // `Bun.spawn` LANÇA quando o binário não está no PATH — `uv`, por exemplo,
+    // se a máquina não tiver o ambiente Python configurado. Só marcar como em
+    // curso DEPOIS do spawn dar certo: se marcássemos antes, a tarefa ficaria
+    // presa em "rodando" para sempre, porque só `p.exited.then` abaixo limpa
+    // `emCurso`, e ele nunca roda quando o spawn nem chega a existir.
+    return { ok: false, msg: `não consegui iniciar ${t.rotulo}: ${e}` };
+  }
+  emCurso.set(nome, exec);
 
   const consumir = async (fluxo: ReadableStream<Uint8Array>) => {
     for await (const pedaco of fluxo) {

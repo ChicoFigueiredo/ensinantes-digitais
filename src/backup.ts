@@ -1,12 +1,13 @@
 /**
- * Cópia do `focus.db` dentro do próprio acervo.
+ * Cópia do `ensinantes.db` dentro do próprio acervo.
  *
- * `focus.db` mora em `BASE_DIR` — fora do disco de estudo, sem redundância
- * própria. Os arquivos capturados já estão a salvo em `repository`; falta o
- * catálogo que sabe o que cada um é, o que falta, e o que deu erro. Se
- * `BASE_DIR` se perder, este projeto se reconstrói do zero (`git clone`), mas
- * o catálogo — status de cada item, padrões do agente, histórico de erros —
- * não tem como ser refeito sem revisitar o site inteiro. Por isso a cópia.
+ * `ensinantes.db` mora em `BASE_DIR` — fora do disco onde vive o acervo, sem
+ * redundância própria. Os vídeos e materiais já estão a salvo em `ACERVO`;
+ * falta o catálogo que sabe o que cada item é, o progresso de quem estuda, e o
+ * que deu erro na transcrição. Se `BASE_DIR` se perder, este projeto se
+ * reconstrói do zero (`git clone` + `bun run scan`), mas o catálogo —
+ * progresso, notas, estado da fila — não tem como ser refeito sem repetir
+ * tudo. Por isso a cópia.
  *
  * `VACUUM INTO` em vez de copiar o arquivo cru: o banco roda em WAL, então
  * parte dos dados mais recentes pode estar só no `.db-wal`, ainda não
@@ -46,8 +47,9 @@ export function sincronizarCopia(db: Database): Sincronizado {
     return { ok: true, bytes: statSync(COPIA_PATH).size, ms: Date.now() - inicio, caminho: COPIA_PATH };
   } catch (e) {
     const erro = String(e).slice(0, 300);
-    // `log` não existe neste projeto — `db.ts` chama o mesmo conceito de
-    // `registrar`, com nível "erro" (não "error") e sem parâmetro de módulo.
+    // `log` não existe neste projeto — a função equivalente em `db.ts` é
+    // `registrar`, com o mesmo formato (db, nível, origem, mensagem), só que
+    // o nível é "erro" e não "error".
     registrar(db, "erro", "sync", `cópia do banco falhou: ${erro}`);
     return { ok: false, bytes: 0, ms: Date.now() - inicio, caminho: COPIA_PATH, erro };
   }

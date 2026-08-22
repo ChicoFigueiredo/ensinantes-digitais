@@ -21,7 +21,7 @@ import type { Database } from "bun:sqlite";
 
 import { PAINEL_HOST, type Usuario } from "./config.ts";
 import {
-  aplicarSync, lerNotas, lerPrefs, lerProgresso, tocarSessao, ultimoAberto, type OpSync,
+  aplicarSync, lerNotas, lerPrefs, lerProgresso, registrar, tocarSessao, ultimoAberto, type OpSync,
 } from "./db.ts";
 import { dentroDoAcervo, servirArquivo } from "./arquivos.ts";
 import { lerTrechos, srtParaVtt } from "./legenda.ts";
@@ -255,9 +255,14 @@ export async function montarResposta(db: Database, req: Request): Promise<Respon
     // O caminho sai do BANCO, nunca da requisição: é o que impede uma URL
     // forjada de virar "abra qualquer arquivo desta máquina".
     if (!item) return Response.json({ ok: false, msg: "item não encontrado" }, { status: 404 });
-    const alvo = dentroDoAcervo(item.rel_path);
-    if (!alvo) return Response.json({ ok: false, msg: "fora do acervo" }, { status: 400 });
-    return Response.json(rota === "/api/revelar" ? await revelar(alvo) : await abrirNoSistema(alvo));
+    // Confere aqui para poder devolver 400 (em vez de 200 com ok:false) num
+    // rel_path fora do acervo — mas quem manda de verdade é `revelar.ts`, que
+    // faz a MESMA checagem com `dentroDoAcervo` de novo antes de executar
+    // qualquer coisa. É a mesma função robusta chamada duas vezes, não duas
+    // versões diferentes da checagem.
+    if (!dentroDoAcervo(item.rel_path)) return Response.json({ ok: false, msg: "fora do acervo" }, { status: 400 });
+    return Response.json(
+      rota === "/api/revelar" ? await revelar(item.rel_path) : await abrirNoSistema(item.rel_path));
   }
 
   if (rota === "/api/limpeza" && req.method === "POST") {
@@ -269,13 +274,48 @@ export async function montarResposta(db: Database, req: Request): Promise<Respon
   return new Response("não encontrado", { status: 404 });
 }
 
+/**
+ * A borda de verdade: o que o `Bun.serve` chama para cada requisição.
+ *
+ * Sem este `try/catch`, uma exceção não tratada em qualquer rota faz o Bun
+ * devolver a página de erro de desenvolvimento — que embute linha de
+ * código-fonte, nome de função e o CAMINHO ABSOLUTO do projeto no HTML. Isso é
+ * inofensivo num servidor que só um dev acessa, mas este painel fica exposto
+ * na internet por um túnel, atrás de senha: o procópio (ou qualquer um que
+ * passe pela senha) veria a mesma coisa numa rota livre que estourasse.
+ *
+ * O erro continua indo para o console e para `eventos` — onde o dono o lê, no
+ * card de eventos da Tarefa 16. O que muda é só o que sai pela rede: nunca
+ * mais que "erro interno" e um 500.
+ *
+ * É uma função à parte, e não um `try/catch` inline dentro do `fetch` de
+ * `Bun.serve`, para dar um jeito de testar a borda sem abrir porta de
+ * verdade — os testes chamam `fetchSeguro` direto, do mesmo jeito que chamam
+ * `montarResposta`.
+ */
+export async function fetchSeguro(db: Database, req: Request): Promise<Response> {
+  try {
+    return await montarResposta(db, req);
+  } catch (e) {
+    console.error(e);
+    try {
+      registrar(db, "erro", "painel", `${new URL(req.url).pathname}: ${e}`);
+    } catch {
+      // Se até `registrar` falhar — o próprio erro original pode ter sido o
+      // banco travado, o mesmo banco que `registrar` grava — a resposta AINDA
+      // tem de sair limpa. O console fica com a única cópia deste caso raro.
+    }
+    return new Response("erro interno", { status: 500 });
+  }
+}
+
 const TENTATIVAS_PORTA = 20;
 
 export function servir(db: Database, porta: number): void {
   for (let p = porta; p < porta + TENTATIVAS_PORTA; p++) {
     try {
       if (p !== porta) console.log(`porta ${p - 1} em uso — tentando ${p}…`);
-      Bun.serve({ hostname: PAINEL_HOST, port: p, fetch: (req) => montarResposta(db, req) });
+      Bun.serve({ hostname: PAINEL_HOST, port: p, fetch: (req) => fetchSeguro(db, req) });
       console.log(`painel em http://${PAINEL_HOST}:${p}`);
       // A porta TEM de ser a 17789 para o túnel funcionar. Painel em outra
       // porta = túnel entregando em porta vazia = 502 no tablet, e o terminal

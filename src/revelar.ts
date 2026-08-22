@@ -12,13 +12,17 @@
  *
  * Segurança: o caminho **nunca** vem da requisição. A página manda o id do
  * item, e o caminho sai do banco — assim uma URL forjada não vira "abra
- * qualquer arquivo da máquina". Ainda assim se confere que o alvo está dentro
- * do acervo antes de executar qualquer coisa.
+ * qualquer arquivo da máquina". `revelar()` e `abrirNoSistema()` recebem o
+ * `rel_path` (não um absoluto já resolvido) e chamam `dentroDoAcervo` elas
+ * mesmas antes de executar qualquer coisa: é a MESMA função que resolve `..`
+ * e confere fronteira de diretório em `arquivos.ts`, não uma segunda versão
+ * mais fraca — um `alvo.startsWith(ACERVO)`, por exemplo, casaria com
+ * `/acervo-outra-coisa` só por começar com o mesmo prefixo de string.
  */
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 
-import { ACERVO } from "./config.ts";
+import { dentroDoAcervo } from "./arquivos.ts";
 
 export interface Revelado {
   ok: boolean;
@@ -131,12 +135,25 @@ function noWsl(): boolean {
 }
 
 /**
- * Abre o gerenciador de arquivos com `alvo` selecionado.
- * `alvo` é caminho absoluto e precisa estar dentro do acervo.
+ * Resolve `relPath` contra o acervo e confere fronteira e existência — o
+ * bloco que `revelar()` e `abrirNoSistema()` repetiam cada uma à sua
+ * maneira. Uma só checagem, usada pelas duas.
  */
-export async function revelar(alvo: string): Promise<Revelado> {
-  if (!alvo.startsWith(ACERVO)) return { ok: false, msg: "fora do acervo" };
+function resolverAlvo(relPath: string): { ok: true; alvo: string } | { ok: false; msg: string } {
+  const alvo = dentroDoAcervo(relPath);
+  if (!alvo) return { ok: false, msg: "fora do acervo" };
   if (!existsSync(alvo)) return { ok: false, msg: "arquivo não está no disco" };
+  return { ok: true, alvo };
+}
+
+/**
+ * Abre o gerenciador de arquivos com o item de `relPath` selecionado.
+ * `relPath` vem do banco (`itens.rel_path`) — nunca da requisição.
+ */
+export async function revelar(relPath: string): Promise<Revelado> {
+  const resolvido = resolverAlvo(relPath);
+  if (!resolvido.ok) return { ok: false, msg: resolvido.msg };
+  const alvo = resolvido.alvo;
 
   if (noWsl()) {
     const win = await paraWindows(alvo);
@@ -179,10 +196,13 @@ export async function revelar(alvo: string): Promise<Revelado> {
  * não reclamar de caminho UNC — o `cmd.exe` avisa que o diretório atual é
  * `\\wsl.localhost\…` toda vez. Em compensação ele SEMPRE devolve 1, então o
  * código de saída não diz nada sobre ter dado certo.
+ *
+ * `relPath` vem do banco (`itens.rel_path`) — nunca da requisição.
  */
-export async function abrirNoSistema(alvo: string): Promise<Revelado> {
-  if (!alvo.startsWith(ACERVO)) return { ok: false, msg: "fora do acervo" };
-  if (!existsSync(alvo)) return { ok: false, msg: "arquivo não está no disco" };
+export async function abrirNoSistema(relPath: string): Promise<Revelado> {
+  const resolvido = resolverAlvo(relPath);
+  if (!resolvido.ok) return { ok: false, msg: resolvido.msg };
+  const alvo = resolvido.alvo;
 
   if (noWsl()) {
     const win = await paraWindows(alvo);
@@ -198,14 +218,4 @@ export async function abrirNoSistema(alvo: string): Promise<Revelado> {
   if (Bun.which("xdg-open") && (await rodar(["xdg-open", alvo])).codigo === 0)
     return { ok: true, msg: "aberto", caminho: alvo };
   return { ok: false, msg: "não há como abrir neste sistema", caminho: alvo };
-}
-
-/** Caminho absoluto de um item, a partir do `rel_path` do banco. */
-export function caminhoDoItem(relPath: string): string {
-  return join(ACERVO, relPath);
-}
-
-/** Caminho como o usuário veria no sistema — para exibir e copiar. */
-export async function caminhoLegivel(alvo: string): Promise<string> {
-  return (noWsl() ? await paraWindows(alvo) : null) ?? alvo;
 }
