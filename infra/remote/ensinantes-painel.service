@@ -1,11 +1,17 @@
-# OPCIONAL — este não está instalado. Serve para o painel subir junto com o WSL,
-# em vez de depender de você abrir um terminal e rodar `bun run painel`.
+# INSTALADO em 23/08/2026, junto com o acesso remoto. Faz o painel subir com o
+# WSL, em vez de depender de alguém abrir um terminal e rodar `bun run painel`.
 #
+# Não é opcional na prática: sem ele o túnel fica de pé entregando numa porta
+# vazia, e o endereço público responde 502 assim que o terminal que subiu o
+# painel fecha. Com ele, PC ligado já basta para o tablet enxergar.
+#
+#   systemctl --user status ensinantes-painel     # como está
+#   systemctl --user restart ensinantes-painel    # depois de mexer no código
+#   systemctl --user disable --now ensinantes-painel   # desligar de vez
+#
+# Foi instalado assim:
 #   cp infra/remote/ensinantes-painel.service ~/.config/systemd/user/
 #   systemctl --user daemon-reload && systemctl --user enable --now ensinantes-painel
-#
-# Com ele ligado, PC ligado já basta para o tablet enxergar o painel. Sem ele,
-# o endereço público responde 502 até você iniciar o painel na mão.
 #
 # A porta não aparece aqui de propósito: o bun lê o .env do WorkingDirectory, e
 # lá está ED_PAINEL_PORTA=17789 — o mesmo número que o túnel usa. Um lugar só

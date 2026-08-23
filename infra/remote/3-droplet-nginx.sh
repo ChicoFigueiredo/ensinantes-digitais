@@ -32,10 +32,23 @@ for nome in "${TODOS_OS_NOMES[@]}"; do
   echo "  ok: $IP_DOM"
 done
 
+# As senhas vão para um ARQUIVO, não para a tela.
+#
+# Quem roda isto pode ser um agente, e aí a saída do terminal vira transcrição
+# de conversa — credencial não tem lugar ali. O arquivo nasce com 600, está no
+# .gitignore, e a última linha deste script diz onde ele está. Leia, guarde no
+# seu gerenciador de senhas, apague.
+ARQUIVO_SENHAS="$(dirname "$0")/senhas.txt"
+umask 077
+: > "$ARQUIVO_SENHAS"
+{
+  echo "# Senhas do painel — $DOMINIO"
+  echo "# Geradas em $(date '+%F %T'). Guarde e APAGUE este arquivo."
+  echo "# Trocar depois: veja 'Trocar uma senha' no README desta pasta."
+} >> "$ARQUIVO_SENHAS"
+
 echo
-echo "gerando as senhas no droplet, uma por usuário — cada uma aparece UMA vez,"
-echo "agora:"
-echo
+echo "gerando as senhas no droplet, uma por usuário…"
 # Duas entradas: a primeira cria o arquivo (-c), as seguintes acrescentam.
 primeiro=1
 for usuario in "${USUARIOS_PAINEL[@]}"; do
@@ -46,10 +59,13 @@ for usuario in "${USUARIOS_PAINEL[@]}"; do
   else
     ssh "$DROPLET" "htpasswd -bB /etc/nginx/ensinantes.htpasswd '$usuario' '$senha'" >/dev/null
   fi
-  echo "  $usuario : $senha"
+  printf '%s : %s\n' "$usuario" "$senha" >> "$ARQUIVO_SENHAS"
+  echo "  $usuario: gravada"
+  unset senha
 done
 echo
-echo "Anote agora — daqui em diante só existe o bcrypt no droplet."
+echo "As senhas estão em: $ARQUIVO_SENHAS"
+echo "No droplet só existe o bcrypt — de lá elas não voltam."
 
 ssh "$DROPLET" 'chmod 640 /etc/nginx/ensinantes.htpasswd && chown root:www-data /etc/nginx/ensinantes.htpasswd'
 
@@ -144,5 +160,5 @@ echo
 echo "───────────────────────────────────────────────"
 echo " https://$DOMINIO"
 echo " apelidos com 301: ${DOMINIOS_ALIAS[*]:-nenhum}"
-echo " usuários: ${USUARIOS_PAINEL[*]} (senhas impressas acima, uma vez só)"
+echo " usuários: ${USUARIOS_PAINEL[*]} — senhas em $ARQUIVO_SENHAS (leia, guarde, apague)"
 echo "───────────────────────────────────────────────"

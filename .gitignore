@@ -9,3 +9,6 @@ acervo
 relatorios/
 scripts/apagar-recortes.sh
 _prompts.ceo.md
+
+# Senhas geradas na instalação do acesso remoto. Nunca versionar.
+infra/remote/senhas.txt
