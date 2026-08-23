@@ -75,6 +75,23 @@ async function pintarCurso(slug) {
   dados = await (await fetch('/api/tudo?curso=' + encodeURIComponent(slug))).json();
   const curso = dados.arvore[0];
 
+  // Slug que não existe devolve 200 com a árvore vazia — e os slugs saem do
+  // NOME DA PASTA (\`slugificar\`, src/scan.ts), então renomear uma pasta no
+  // acervo transforma todo favorito e todo #i compartilhado num endereço
+  // morto. Sem isto, \`curso.titulo\` estourava e a tela ficava em
+  // "carregando…" para sempre: sem mensagem e sem caminho de volta.
+  if (!curso) {
+    document.getElementById('app').innerHTML = \`
+      <header class="topo"><a href="/" title="voltar">←</a><h1>Curso não encontrado</h1></header>
+      <main><div class="retomar">
+        <h3>Não há curso com o endereço "\${esc(slug)}"</h3>
+        <div class="meta">A pasta pode ter sido renomeada no acervo. A home lista
+          os cursos que existem hoje.</div>
+        <a class="cartao" href="/">Voltar para a home</a>
+      </div></main>\`;
+    return;
+  }
+
   document.getElementById('app').innerHTML = \`
     <header class="topo">
       <a href="/" title="voltar">←</a>
