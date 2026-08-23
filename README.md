@@ -175,6 +175,40 @@ O progresso e as notas são por usuário: cada um marca o que viu sem mexer no d
 outro. No canto superior direito, o chico vê acender um `(p)` quando o procópio
 está online; o contrário não acontece, de propósito.
 
+### Trocar a senha de um deles
+
+```bash
+ssh -t root@ssh.chico-figueiredo.com.br htpasswd -B /etc/nginx/ensinantes.htpasswd chico
+ssh -t root@ssh.chico-figueiredo.com.br htpasswd -B /etc/nginx/ensinantes.htpasswd procopio
+```
+
+O `-t` **não é enfeite**: o `htpasswd` pergunta a senha, e `ssh` com comando não
+aloca terminal. Sem ele o prompt não aparece direito e a troca falha de um jeito
+confuso. Com ele, a senha é pedida duas vezes e nunca passa pela linha de
+comando — não fica no histórico do shell nem visível na lista de processos.
+
+Cada comando mexe **só** no usuário indicado. Não precisa recarregar o nginx: o
+arquivo é lido a cada requisição, então a senha nova vale na seguinte. Confira
+sem abrir o navegador — `curl` pergunta a senha e não a deixa no histórico:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -u chico \
+  https://ensinantesdigitais.chicofigueiredo.com.br/     # 200 com a nova, 401 com a velha
+```
+
+Dois avisos que custam caro:
+
+- **Nunca use `-c`** fora da instalação. Ele **recria** o arquivo e apaga o
+  outro usuário junto — trocar a senha do chico com `-c` deixa o procópio sem
+  acesso, sem aviso nenhum. Não é folclore; conferido num arquivo descartável:
+  duas entradas viram uma só, em silêncio, e o `htpasswd` sai com 0.
+- **Nunca use `-b`** (senha na linha de comando): ela fica no histórico do
+  shell e visível na lista de processos do servidor enquanto roda.
+
+As senhas geradas na instalação ficaram em `infra/remote/senhas.txt` (permissão
+600, fora do git). Guarde no seu gerenciador e **apague o arquivo** — no
+servidor só existe o bcrypt, e de lá elas não voltam.
+
 ## Acesso de fora
 
 A porta é a **17789**, dos dois lados do túnel, e tem de bater com `PORTA` no
@@ -192,7 +226,7 @@ dois roteiros diferentes.
 | Sintoma | Quase sempre é |
 |---|---|
 | 502 de fora | PC suspenso, painel parado, ou painel que pulou de porta |
-| 401 que não passa | senha errada — `htpasswd -B /etc/nginx/ensinantes.htpasswd <usuario>` |
+| 401 que não passa | senha errada — veja [Trocar a senha](#trocar-a-senha-de-um-deles) |
 | Procópio vendo card de disco | `proxy_set_header X-Painel-Usuario` faltando no nginx |
 | Vídeo não deixa arrastar | `Range` não está chegando — `proxy_buffering off` no nginx |
 | Legenda não aparece | o `<track>` não lê SRT; confira se `/api/legenda` devolve VTT |
