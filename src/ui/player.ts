@@ -299,6 +299,13 @@ const temaAtual = () => lerPref('tema') === 'claro' ? 'claro' : 'escuro';
 
 function aplicarTema() {
   const t = temaAtual();
+  // O cache local é o que mata a piscada, porque o script do topo da página só
+  // sabe ler o localStorage. Sem esta linha o tema que veio do SERVIDOR valia
+  // nesta pintura e sumia na próxima carga — \`lerPref\` acha o valor em
+  // \`dados.prefs\` e \`aplicarPrefsDoServidor\` conclui que não há o que gravar,
+  // e a página voltava a nascer escura no aparelho que ainda não conhecia a
+  // escolha. \`deOutroAparelho = true\`: isto é cache, nunca vai para a fila.
+  definirPref('tema', t, true);
   document.documentElement?.setAttribute?.('data-tema', t);
   // O chip só existe depois de o cabeçalho ser pintado — e \`aplicarTema\` também
   // é chamada antes disso, quando as prefs do servidor chegam.

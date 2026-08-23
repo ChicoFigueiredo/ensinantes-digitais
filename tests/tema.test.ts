@@ -204,7 +204,10 @@ test("o chip e o script anti-piscada leem a MESMA chave", () => {
 const MONTAR = new Function(
   "document", "fetch", "setInterval", "addEventListener", "location", "history", "localStorage",
   `${HOME_JS}${ADMIN_JS}${PLAYER_JS}${MATERIAIS_JS}${TRANSCRICAO_JS}${CURSO_JS}
-   return { trocarTema, temaAtual, ligarChipDeTema };`,
+   return {
+     trocarTema, temaAtual, ligarChipDeTema, aplicarPrefsDoServidor,
+     set dados(x) { dados = x; },
+   };`,
 );
 
 function abrirCabecalho(prefsLocais: Record<string, string> = {}) {
@@ -258,6 +261,22 @@ test("o clique no chip troca o tema, carimba o <html> e enfileira a preferência
   expect(p.html["data-tema"]).toBe("escuro");
   expect(p.fila().at(-1)).toEqual({ tipo: "pref", nome: "tema", valor: "escuro" });
   expect(p.bTema.textContent).toBe("Claro");
+});
+
+// O tema do servidor chegava à tela de curso e NÃO ao cache local: `lerPref`
+// acha o valor em `dados.prefs`, `aplicarPrefsDoServidor` conclui que não há o
+// que gravar, e o script do topo da página — que só lê o localStorage — não
+// achava nada na carga seguinte. A escolha feita no tablet valia uma pintura e
+// piscava na próxima.
+test("o tema vindo do servidor fica no cache local, senão a próxima carga pisca", () => {
+  const p = abrirCabecalho();
+  p.cliente.dados = { prefs: { tema: "claro" }, progresso: {}, notas: {} };
+  p.cliente.aplicarPrefsDoServidor({ tema: "claro" });
+
+  expect(p.guardado.get("ed.tema")).toBe("claro");
+  expect(p.html["data-tema"]).toBe("claro");
+  // Aplicar o que veio do servidor não devolve nada para ele.
+  expect(p.fila()).toEqual([]);
 });
 
 test("a preferência gravada abre a página já no tema certo", () => {
