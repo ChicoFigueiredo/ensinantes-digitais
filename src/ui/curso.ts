@@ -26,11 +26,33 @@ export function escolherItemInicial<T extends { tipo: string }>(itens: T[]): T |
   return itens.find((i) => i.tipo === "video") ?? itens[0] ?? null;
 }
 
+/**
+ * O item vizinho na ordem em que a árvore mostra — o anterior (`-1`) ou o
+ * próximo (`+1`) —, ou `null` quando não há.
+ *
+ * A lista chega achatada, atravessando módulo: a última aula de um módulo
+ * emenda na primeira do seguinte, que é o que a pessoa espera das setas e do
+ * autoplay. E o vizinho é o vizinho de qualquer tipo, não o próximo VÍDEO:
+ * pular o PDF que o professor pôs no meio da ordem seria decidir por ela o
+ * que faz parte do curso.
+ */
+export function vizinhoNaLista<T extends { id: number }>(
+  itens: T[], id: number, passo: number,
+): T | null {
+  const i = itens.findIndex((x) => x.id === id);
+  return i < 0 ? null : (itens[i + passo] ?? null);
+}
+
 export const CURSO_JS = `
 let dados = null, atual = null;
 
-// A MESMA função de src/ui/curso.ts, não uma cópia dela.
+// As MESMAS funções de src/ui/curso.ts, não cópias delas.
 ${escolherItemInicial.toString()}
+${vizinhoNaLista.toString()}
+
+/** A lista achatada que as setas e o autoplay percorrem. */
+const itensEmOrdem = () => (dados?.arvore[0]?.modulos || []).flatMap(m => m.itens);
+const vizinho = (id, passo) => vizinhoNaLista(itensEmOrdem(), id, passo);
 
 const CHAVE = id => 'i:' + id;
 const feito = id => !!(dados?.progresso[CHAVE(id)]?.feito);
@@ -104,7 +126,7 @@ async function pintarCurso(slug) {
   // primeira aula com vídeo e, não havendo vídeo algum no curso (caso de
   // Materiais/, só markdown), o primeiro item de qualquer tipo.
   const alvo = Number((location.hash.match(/#i(\\d+)/) || [])[1]);
-  const itens = curso.modulos.flatMap(m => m.itens);
+  const itens = itensEmOrdem();
   atual = (alvo && itemPorId(alvo)) || escolherItemInicial(itens);
 
   pintarArvore();
