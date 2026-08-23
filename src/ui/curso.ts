@@ -97,6 +97,11 @@ async function pintarCurso(slug) {
   dados = await (await fetch('/api/tudo?curso=' + encodeURIComponent(slug))).json();
   const curso = dados.arvore[0];
 
+  // Antes de qualquer pintura, inclusive a da tela de curso inexistente: é
+  // daqui que sai o tema que o chip anuncia, e é por aqui que a escolha feita
+  // no outro aparelho chega a este.
+  aplicarPrefsDoServidor(dados.prefs);
+
   // Slug que não existe devolve 200 com a árvore vazia — e os slugs saem do
   // NOME DA PASTA (\`slugificar\`, src/scan.ts), então renomear uma pasta no
   // acervo transforma todo favorito e todo #i compartilhado num endereço
@@ -118,9 +123,12 @@ async function pintarCurso(slug) {
     <header class="topo">
       <a href="/" title="voltar">←</a>
       <h1>\${esc(curso.titulo)}</h1>
-      <div class="espaco"></div>\${selos(dados.indicadores)}
+      <div class="espaco"></div>
+      \${chipDeTema(temaAtual())}\${selos(dados.indicadores)}
     </header>
     <div class="curso"><div class="arvore"></div><div class="palco"></div></div>\`;
+
+  ligarChipDeTema();
 
   // Retoma o que estava aberto, ou o que \`escolherItemInicial\` decidir: a
   // primeira aula com vídeo e, não havendo vídeo algum no curso (caso de

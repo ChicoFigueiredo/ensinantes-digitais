@@ -8,6 +8,8 @@
  * servidor confirma. Reenviar o mesmo lote é inofensivo: cada operação é
  * "deixe assim", nunca "some mais um".
  */
+import { CHAVE_TEMA } from "./tema.ts";
+
 /**
  * A geração do palco: UM contador para todas as respostas em voo.
  *
@@ -167,6 +169,11 @@ function enfileirar(op) {
 
 /** Efeito imediato na tela, sem esperar a rede. */
 function aplicarLocal(op) {
+  // A HOME não tem \`dados\`: ela pinta a partir do \`d\` local de \`pintarHome\`.
+  // Até aqui isso não importava, porque só a tela de curso escrevia na fila; o
+  // chip do tema é o primeiro controle que existe nas DUAS telas, e sem esta
+  // saída ele estouraria em \`dados.prefs\` na home.
+  if (!dados) return;
   if (op.tipo === 'progresso') dados.progresso[op.chave] = { segundos: op.segundos, feito: op.feito };
   if (op.tipo === 'nota') { if (op.texto.trim()) dados.notas[op.chave] = op.texto; else delete dados.notas[op.chave]; }
   if (op.tipo === 'pref') dados.prefs[op.nome] = op.valor;
@@ -185,12 +192,17 @@ async function escoar() {
     });
     if (r.ok) {
       const d = await r.json();
-      dados.progresso = d.progresso; dados.notas = d.notas; dados.prefs = d.prefs;
+      // \`dados\` e a árvore só existem na tela de curso. Na home a fila também
+      // escoa — o chip do tema enfileira de lá —, e sem estas guardas o
+      // \`dados.progresso\` estourava DENTRO do try, o catch engolia, e a linha
+      // que limpa a fila nunca era alcançada: o mesmo lote voltava a cada 8 s
+      // para sempre. É o modo de falha que esta fila inteira existe para não ter.
+      if (dados) { dados.progresso = d.progresso; dados.notas = d.notas; dados.prefs = d.prefs; }
       // Só limpa o que este lote continha: o que entrou na fila durante a
       // viagem fica para a próxima rodada.
       const restante = JSON.parse(localStorage.getItem(FILA) || '[]').slice(ops.length);
       localStorage.setItem(FILA, JSON.stringify(restante));
-      pintarArvore();
+      if (dados) pintarArvore();
       // O que o servidor devolveu pode ter vindo do outro aparelho.
       aplicarPrefsDoServidor(d.prefs);
     }
@@ -221,6 +233,10 @@ const CHAVES_PREF = {
   legenda: 'ed.legenda',
   legendaLigada: 'ed.legendaLigada',
   autoplay: 'ed.autoplay',
+  // A chave vem de src/ui/tema.ts, e não escrita de novo aqui: o script que
+  // roda antes da primeira pintura lê a MESMA string, e duas cópias dela
+  // dariam uma piscada silenciosa no dia em que uma mudasse.
+  tema: '${CHAVE_TEMA}',
 };
 
 const VELOCIDADES = [0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -255,6 +271,7 @@ function aplicarPrefsDoServidor(prefs) {
     if (valor != null && String(valor) !== lerPref(nome)) definirPref(nome, valor, true);
   }
   refletirHud();
+  aplicarTema();
 }
 
 const daRoda = (roda, valor, padrao) => roda.includes(valor) ? valor : padrao;
@@ -264,6 +281,36 @@ const tamanhoLegenda = () => daRoda(TAMANHOS_LEGENDA, Number(lerPref('legenda'))
 // (só '1' liga): emendar sozinho na próxima aula é escolha, não surpresa.
 const legendaLigada = () => lerPref('legendaLigada') !== '0';
 const autoplayLigado = () => lerPref('autoplay') === '1';
+
+// --- o tema ------------------------------------------------------------------
+/**
+ * Escuro ou claro. É preferência de LEITURA, não privilégio: os dois usuários
+ * têm o seu, e ele anda pelo mesmo caminho da velocidade e do autoplay —
+ * localStorage para responder no clique, fila do /api/sync para chegar ao
+ * banco e voltar nos outros aparelhos.
+ *
+ * Quem carimba o <html> na CHEGADA da página é o script do topo dela
+ * (SCRIPT_TEMA, em src/ui/tema.ts), que roda antes da primeira pintura. O que
+ * está aqui é para depois: o clique no chip e a escolha que veio do outro
+ * aparelho.
+ */
+const TEMAS = ['escuro', 'claro'];
+const temaAtual = () => lerPref('tema') === 'claro' ? 'claro' : 'escuro';
+
+function aplicarTema() {
+  const t = temaAtual();
+  document.documentElement?.setAttribute?.('data-tema', t);
+  // O chip só existe depois de o cabeçalho ser pintado — e \`aplicarTema\` também
+  // é chamada antes disso, quando as prefs do servidor chegam.
+  const b = document.getElementById('bTema');
+  if (b) { const a = anuncioDoTema(t); b.textContent = a.rotulo; b.title = a.titulo; }
+}
+
+/** O clique do chip: gira a roda de dois, grava e reescreve o próprio rótulo. */
+function trocarTema() {
+  definirPref('tema', proximoDaRoda(TEMAS, temaAtual()));
+  aplicarTema();
+}
 
 const estadoDoHud = () => ({
   velocidade: velocidade(), tamanhoLegenda: tamanhoLegenda(),

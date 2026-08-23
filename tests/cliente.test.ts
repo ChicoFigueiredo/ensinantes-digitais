@@ -21,7 +21,7 @@ import { TRANSCRICAO_JS } from "../src/ui/transcricao.ts";
  * de qualquer outro jeito.
  */
 const MONTAR = new Function("document", "fetch", "setInterval", "addEventListener",
-  "location", "history",
+  "location", "history", "localStorage",
   `${HOME_JS}${ADMIN_JS}${PLAYER_JS}${MATERIAIS_JS}${TRANSCRICAO_JS}${CURSO_JS}
    return pintarCurso;`);
 
@@ -38,7 +38,7 @@ function abrirCurso(slug: string, arvore: unknown[]): Promise<string> {
     // uma vez, no carregamento do script — não por aula. Um documento de
     // verdade tem isto; o de mentira precisa ter também.
     addEventListener: () => {},
-    documentElement: { style: { setProperty: () => {} } },
+    documentElement: { style: { setProperty: () => {} }, setAttribute: () => {} },
   };
   const buscar = async () => ({
     json: async () => ({
@@ -47,8 +47,18 @@ function abrirCurso(slug: string, arvore: unknown[]): Promise<string> {
     }),
   });
 
+  // `localStorage` entra como parâmetro pelo mesmo motivo dos outros: sombrear
+  // o global. E agora ele é NECESSÁRIO — `pintarCurso` aplica as preferências
+  // que vieram do servidor (o tema, entre elas) antes de pintar, e o Bun não
+  // tem `localStorage` nenhum: sem este de mentira, seria ReferenceError.
+  const guardado = new Map<string, string>();
+  const localStorage = {
+    getItem: (k: string) => guardado.get(k) ?? null,
+    setItem: (k: string, v: string) => { guardado.set(k, v); },
+  };
+
   const pintarCurso = MONTAR(documento, buscar, () => 0, () => {},
-    { hash: "" }, { replaceState: () => {} });
+    { hash: "" }, { replaceState: () => {} }, localStorage);
   return pintarCurso(slug).then(() => app.innerHTML);
 }
 

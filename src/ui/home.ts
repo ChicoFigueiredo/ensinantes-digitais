@@ -7,7 +7,30 @@
  */
 import { comoRelogio } from "../legenda.ts";
 
+/**
+ * O que o chip do tema mostra: o rótulo é o tema para onde o clique LEVA, não
+ * o que está valendo. Um chip escrito "Escuro" com a tela já escura faz a
+ * pessoa clicar só para descobrir o que ele queria dizer.
+ */
+export function anuncioDoTema(tema: string): { rotulo: string; titulo: string } {
+  const alvo = tema === "claro" ? "escuro" : "claro";
+  return {
+    rotulo: alvo === "claro" ? "Claro" : "Escuro",
+    titulo: `Mudar para o tema ${alvo}`,
+  };
+}
+
+/** O chip do cabeçalho, ao lado dos selos (c)/(p). */
+export function chipDeTema(tema: string): string {
+  const a = anuncioDoTema(tema);
+  return `<button class="tema" id="bTema" title="${a.titulo}">${a.rotulo}</button>`;
+}
+
 export const HOME_JS = `
+// As MESMAS funções deste arquivo, não cópias manuscritas delas.
+${anuncioDoTema.toString()}
+${chipDeTema.toString()}
+
 // A MESMA função de src/legenda.ts, não uma cópia manuscrita dela.
 ${comoRelogio.toString()}
 const relogio = comoRelogio;
@@ -44,12 +67,18 @@ function cartaoDeCurso(curso, progresso) {
     s + m.itens.reduce((t, i) => t + (i.duracao || 0), 0), 0);
   const vazio = curso.estado === 'esqueleto';
 
+  // Curso que não está no disco não ganha barra nem contagem: 0% de nada não é
+  // progresso, é um zero que parece atraso. O que ele é já está escrito na
+  // meta ("não baixado"), e o contorno tracejado do cartão diz o resto.
+  const avanco = vazio ? '' : \`
+    <div class="barra \${p.pct === 100 ? 'pronta' : ''}"><i style="width:\${p.pct}%"></i></div>
+    <div class="progresso num"><span>\${p.feitos} de \${p.total}</span><b>\${p.pct}%</b></div>\`;
+
   return \`<a class="cartao \${vazio ? 'vazio' : ''}" href="/curso/\${curso.slug}">
     <h2>\${esc(curso.titulo)}</h2>
     <div class="meta num">\${plural(curso.modulos.length, 'módulo', 'módulos')} ·
       \${vazio ? 'não baixado' : plural(aulas, 'item', 'itens')}\${seg ? ' · ' + horas(seg) : ''}</div>
-    <div class="barra \${p.pct === 100 ? 'pronta' : ''}"><i style="width:\${p.pct}%"></i></div>
-    <div class="meta num" style="margin-top:6px">\${vazio ? '—' : p.feitos + ' de ' + p.total + ' · ' + p.pct + '%'}</div>
+    \${avanco}
   </a>\`;
 }
 
@@ -73,6 +102,12 @@ function acharRetomar(arvore, retomar) {
   return null;
 }
 
+/** O clique do chip do tema. \`trocarTema\` mora com as outras prefs, em player.ts. */
+function ligarChipDeTema() {
+  const b = document.getElementById('bTema');
+  if (b) b.onclick = trocarTema;
+}
+
 function selos(ind) {
   const meu = '<span class="selo eu" title="você">' + ind.eu + '</span>';
   const outro = ind.outro ? '<span class="selo outro" title="procópio está online">' + ind.outro + '</span>' : '';
@@ -83,9 +118,16 @@ async function pintarHome() {
   const d = await (await fetch('/api/tudo')).json();
   const retomar = acharRetomar(d.arvore, d.retomar);
 
+  // ANTES de montar o cabeçalho: é daqui que sai o tema que o chip anuncia, e
+  // é aqui que a escolha feita no outro aparelho chega a este. Sem esta linha
+  // a home nunca aplicava nada do que o servidor guarda — dava para trocar o
+  // tema no tablet e voltar ao PC sem que ele soubesse.
+  aplicarPrefsDoServidor(d.prefs);
+
   document.getElementById('app').innerHTML = \`
     <header class="topo">
-      <h1>Ensinantes Digitais</h1><div class="espaco"></div>\${selos(d.indicadores)}
+      <h1>Ensinantes Digitais</h1><div class="espaco"></div>
+      \${chipDeTema(temaAtual())}\${selos(d.indicadores)}
     </header>
     <main>
       <div class="cartoes">\${d.arvore.map(c => cartaoDeCurso(c, d.progresso)).join('')}</div>
@@ -99,5 +141,6 @@ async function pintarHome() {
     </main>\`;
 
   ligarBotoesDeTarefa();
+  ligarChipDeTema();
 }
 `;
