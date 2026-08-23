@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { medirRecortes, tipoDe, varrerPasta } from "../src/scan.ts";
+import { medirRecortes, tipoDe, tituloDoCurso, varrerPasta } from "../src/scan.ts";
 
 const RAIZ = join(import.meta.dir, "__fixture-scan");
 
@@ -141,4 +141,28 @@ test("medirRecortes devolve mapa vazio em vez de estourar quando o find não exi
   // injetado por parâmetro, e o teste usa um nome que garantidamente não existe.
   const m = medirRecortes(["/tmp"], "binario-que-definitivamente-nao-existe-aqui-9x7z");
   expect(m.size).toBe(0);
+});
+
+// --- o nome que o curso tem na tela ----------------------------------------
+// A tabela existe porque já são dois casos: `Repo` nunca se chamou "Repo" na
+// tela, e o curso 1 é "Ensinantes Digitais" — o nome do combo —, não o
+// "Ensinantes" que a pasta abrevia.
+
+test("a tabela de nomes manda no título do curso", () => {
+  expect(tituloDoCurso("Repo")).toBe("Materiais");
+  expect(tituloDoCurso("1-Ensinantes")).toBe("Ensinantes Digitais");
+});
+
+test("pasta sem entrada na tabela cai no nome derivado dela", () => {
+  expect(tituloDoCurso("2-Acelerador.Conteudo.IA")).toBe("Acelerador Conteudo IA");
+  expect(tituloDoCurso("3-Criadores.Videos")).toBe("Criadores Videos");
+});
+
+test("a chave da tabela é o nome da pasta, não o slug dela", () => {
+  // O slug sai de `slugificar(pasta)` e é minúsculo: "1-ensinantes". Ele NÃO
+  // casa com a tabela — e não deve, porque quem chega aqui é sempre o
+  // `basename` da pasta. É o que garante que renomear o curso na tela não
+  // mexe no endereço, e que todo favorito e todo `#i` compartilhado segue
+  // valendo.
+  expect(tituloDoCurso("1-ensinantes")).toBe("ensinantes");
 });

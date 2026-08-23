@@ -233,9 +233,26 @@ const slugificar = (pasta: string): string =>
   pasta.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
        .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-/** Título do curso a partir da pasta: tira o prefixo numérico, humaniza. */
-const tituloDoCurso = (pasta: string): string =>
-  pasta === "Repo" ? "Materiais" : lerModulo(pasta).titulo;
+/**
+ * Pasta do acervo → título que o painel mostra.
+ *
+ * É tabela, e não mais um `if`, porque já são dois casos: `Repo` nunca se
+ * chamou "Repo" na tela, e o curso 1 é "Ensinantes Digitais" — o nome do combo
+ * inteiro —, não o "Ensinantes" que a pasta abrevia. Renomear um curso passa a
+ * ser uma linha aqui, sem tocar em lógica.
+ *
+ * O que NÃO muda junto: o slug, que sai do nome da PASTA (`slugificar`). Todo
+ * favorito e todo `#i` compartilhado continuam valendo depois desta troca.
+ */
+export const TITULOS_DE_CURSO: Record<string, string> = {
+  "Repo": "Materiais",
+  "1-Ensinantes": "Ensinantes Digitais",
+};
+
+/** O título da tabela; sem entrada, o nome da pasta sem prefixo, humanizado. */
+export function tituloDoCurso(pasta: string): string {
+  return TITULOS_DE_CURSO[pasta] ?? lerModulo(pasta).titulo;
+}
 
 /**
  * Escaneia um curso inteiro e escreve no banco.
