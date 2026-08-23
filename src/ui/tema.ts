@@ -2,10 +2,49 @@
  * Tokens e CSS base. Um arquivo só para cor e tipografia, porque é o que mais
  * muda e o que menos deve estar espalhado.
  *
- * Escuro sóbrio: o vídeo e o texto dominam, a interface recua. Sem sombra —
- * em fundo escuro sombra não separa plano, só suja. Borda de 1px faz o
- * trabalho e some quando não é olhada.
+ * São DOIS temas, um conjunto de tokens para cada: o escuro no `:root`, o ocre
+ * claro em `[data-tema="claro"]`. Nenhuma regra abaixo dos tokens escreve cor
+ * literal — quem quiser um terceiro tema mexe em oito linhas e em mais nada. O
+ * tema é preferência de LEITURA, não privilégio: os dois usuários têm o seu, e
+ * ele viaja no mesmo caminho da velocidade e do autoplay (localStorage + fila
+ * do /api/sync, tabela `prefs`, por usuário).
+ *
+ * Escuro sóbrio: o vídeo e o texto dominam, a interface recua. O claro é cor de
+ * papel, pelo mesmo motivo — de dia, num quarto claro, tela preta cansa.
+ *
+ * Os tokens `--video-*` são a exceção que confirma a regra: eles NÃO mudam com
+ * o tema, porque o vídeo é preto nos dois. Ver o comentário de CSS_CENA.
+ *
+ * Sombra: nenhuma no escuro, uma no claro. O porquê está escrito inteiro
+ * embaixo de `[data-tema="claro"] .cartao` — leia antes de apagar.
  */
+
+/**
+ * Chave do localStorage do tema. Uma só, e ela é lida em dois lugares muito
+ * distantes — o chip do cabeçalho (src/ui/player.ts) e o script que roda antes
+ * da primeira pintura (logo abaixo). Duas cópias de string dariam uma piscada
+ * silenciosa no dia em que uma delas mudasse.
+ */
+export const CHAVE_TEMA = "ed.tema";
+
+/**
+ * O trecho que roda ANTES da primeira pintura, no `<head>` e antes do `<style>`.
+ *
+ * Sem ele a página nasce escura e clareia quando o JS acorda: uma piscada preta
+ * a cada navegação, justamente para quem escolheu o claro. Por isso é síncrono,
+ * minúsculo e não depende de nada — lê o localStorage e carimba o `<html>`.
+ *
+ * O `try` não é decoração: com armazenamento bloqueado pelo navegador,
+ * `localStorage` LANÇA em vez de devolver null, e uma exceção aqui derrubaria o
+ * script inteiro antes do resto da página. Nesse caso vale o escuro do `:root`.
+ */
+export const SCRIPT_TEMA = `
+try {
+  var t = localStorage.getItem('${CHAVE_TEMA}');
+  if (t === 'claro' || t === 'escuro') document.documentElement.setAttribute('data-tema', t);
+} catch (e) {}
+`;
+
 export const CSS = `
 :root {
   --fundo: #0e1013;
@@ -14,10 +53,48 @@ export const CSS = `
   --borda: #2a2f3a;
   --texto: #e8eaed;
   --secundario: #9aa3af;
-  --ambar: #e8963c;
+  --destaque: #e8963c;
   --verde: #4ea672;
+
+  /* Sobre o vídeo — NÃO seguem o tema. Ver CSS_CENA. */
+  --video-texto: #e8eaed;
+  --video-borda: #2a2f3a;
+  --video-destaque: #e8963c;
+  --video-fundo: rgba(14, 16, 19, .82);
+  --video-tarja: rgba(14, 16, 19, .86);
+
   --raio: 16px;
   --fonte: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Barra de rolagem e controle nativo acompanham o tema sem CSS nosso. */
+  color-scheme: dark;
+}
+
+/*
+ * O ocre claro: os MESMOS tokens, em cor de papel.
+ *
+ * Três valores saíram do ponto de partida, e os três por medida de contraste
+ * (WCAG AA, 4.5:1 para texto normal), não por gosto:
+ *
+ *   --secundario  #7b7264 → #6f6759   4,13:1 reprovava sobre o fundo; agora 4,87:1.
+ *   --destaque    #b06f26 → #9a5f1f   3,56:1, e ele é TEXTO em quatro lugares
+ *                                     (selo, trecho corrente, links do
+ *                                     markdown); agora 4,54:1.
+ *
+ * O texto sobre o fundo (12,4:1) e o resto da paleta ficaram como o dono
+ * aprovou. tests/tema.test.ts mede isto a cada rodada, direto destes tokens:
+ * mexer numa cor e reprovar no contraste quebra o teste, não a leitura de
+ * alguém.
+ */
+[data-tema="claro"] {
+  --fundo: #f4efe4;
+  --superficie: #fffdf8;
+  --elevada: #ebe2d1;
+  --borda: #dcd0b9;
+  --texto: #2f2a23;
+  --secundario: #6f6759;
+  --destaque: #9a5f1f;
+  --verde: #4d7a51;
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -41,7 +118,19 @@ button {
   background: var(--elevada); border: 1px solid var(--borda);
   border-radius: 8px; padding: 6px 12px;
 }
-button:hover { border-color: var(--ambar); }
+button:hover { border-color: var(--destaque); }
+
+/*
+ * O FOCO DE TECLADO, numa regra só.
+ *
+ * Até aqui existia só \`:hover\`, e metade do uso deste painel é em tablet com
+ * teclado — onde \`:hover\` não existe e o cursor de foco era invisível: dava
+ * para tabular pelos cartões sem ver onde se estava. O anel é desenhado FORA da
+ * borda (\`outline-offset\`), então acender o foco não empurra um pixel de
+ * conteúdo. E \`:focus-visible\`, não \`:focus\`: quem chegou com o dedo ou com o
+ * mouse não ganha anel nenhum.
+ */
+:focus-visible { outline: 2px solid var(--destaque); outline-offset: 2px; }
 
 header.topo {
   display: flex; align-items: center; gap: 16px;
@@ -51,6 +140,9 @@ header.topo {
 header.topo h1 { font-size: 16px; font-weight: 600; margin: 0; letter-spacing: .01em; }
 header.topo .espaco { flex: 1; }
 
+/* O chip do tema, ao lado dos selos. O rótulo diz para onde VAI, não onde está. */
+.tema { font-size: 12.5px; padding: 4px 10px; }
+
 /* As letrinhas do canto: (c) para o chico, (p) para o procópio. */
 .selo {
   width: 26px; height: 26px; border-radius: 50%;
@@ -58,26 +150,74 @@ header.topo .espaco { flex: 1; }
   font-size: 12px; font-weight: 700;
   border: 1px solid var(--borda); background: var(--elevada);
 }
-.selo.eu { border-color: var(--ambar); color: var(--ambar); }
+.selo.eu { border-color: var(--destaque); color: var(--destaque); }
 .selo.outro { color: var(--secundario); }
 
 main { padding: 24px 22px 64px; max-width: 1400px; margin: 0 auto; }
 
 .cartoes { display: grid; gap: 18px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
 
+/*
+ * O CARTÃO e a hierarquia dele: título (o que é) → meta (de que é feito) →
+ * progresso (quanto falta). Três degraus de tamanho e de cor, do mais forte ao
+ * mais fraco, para o olho pegar o título primeiro e o resto quando quiser. Era
+ * tudo quase do mesmo peso, e o cartão lia como um bloco cinza só.
+ */
 .cartao {
   background: var(--superficie); border: 1px solid var(--borda);
-  border-radius: var(--raio); padding: 20px; display: block;
+  border-radius: var(--raio); padding: 20px 20px 18px; display: block;
   transition: border-color .15s ease;
 }
-.cartao:hover { border-color: var(--ambar); }
-.cartao h2 { margin: 0 0 4px; font-size: 17px; font-weight: 600; }
+.cartao:hover { border-color: var(--destaque); }
+.cartao h2 { margin: 0 0 5px; font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
 .cartao .meta { color: var(--secundario); font-size: 13px; }
-.cartao.vazio { opacity: .55; }
+
+/* A contagem recua, a porcentagem fica firme na direita: é ela que se procura. */
+.cartao .progresso {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  margin-top: 8px; font-size: 12.5px; color: var(--secundario);
+}
+.cartao .progresso b { font-size: 13px; font-weight: 600; color: var(--texto); }
+
+/*
+ * "Não baixado" é um ESTADO, não um defeito.
+ *
+ * Era \`opacity: .55\` no cartão inteiro — título, texto e borda desbotados
+ * juntos —, e cartão desbotado lê como tela quebrada ou como coisa ainda
+ * carregando. Aqui ele fica nítido e diz o que é por outro caminho: contorno
+ * tracejado, que é como se desenha o que ainda vai ser preenchido, e sem o
+ * fundo de superfície, porque não há conteúdo em cima do qual pousar. A barra
+ * de progresso some no HTML (src/ui/home.ts), e não por CSS: não existe
+ * progresso a mostrar num curso que não está no disco.
+ */
+.cartao.vazio { background: transparent; border-style: dashed; }
+.cartao.vazio h2 { color: var(--secundario); font-weight: 500; }
 
 .barra { height: 5px; border-radius: 3px; background: var(--elevada); margin-top: 14px; overflow: hidden; }
-.barra > i { display: block; height: 100%; background: var(--ambar); }
+.barra > i { display: block; height: 100%; background: var(--destaque); }
 .barra.pronta > i { background: var(--verde); }
+
+/*
+ * SOMBRA — e por que a regra é DIFERENTE em cada tema, de propósito.
+ *
+ * O projeto proíbe sombra, e a razão está escrita no topo deste arquivo: em
+ * fundo escuro sombra não separa plano, só suja — a borda de 1px faz o
+ * trabalho sozinha. Essa razão NÃO vale em fundo claro. No papel, --superficie
+ * (#fffdf8) está a 1,13:1 do --fundo (#f4efe4) e a borda ocre a 1,33:1 dele:
+ * sem sombra o cartão não é um plano acima da página, é um retângulo desenhado
+ * nela. A sombra é exatamente o que devolve a separação — e é a razão de a
+ * borda clara poder continuar clara, em vez de virar um traço marrom pesado só
+ * para se fazer notar.
+ *
+ * Então: o escuro segue sem sombra NENHUMA, e o claro tem UMA, muito suave,
+ * nos cartões. Isto não é violação da regra; é a regra aplicada onde a razão
+ * dela existe. Não apague por parecer inconsistente.
+ *
+ * O cartão vazio fica de fora: ele não é um plano acima da página, é o
+ * contorno de algo que ainda não chegou.
+ */
+[data-tema="claro"] .cartao { box-shadow: 0 2px 6px rgba(47, 42, 35, .07); }
+[data-tema="claro"] .cartao.vazio { box-shadow: none; }
 
 .retomar { margin-top: 34px; }
 .retomar h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
@@ -112,7 +252,7 @@ export const CSS_CURSO = `
   border-left: 2px solid transparent; color: var(--secundario);
 }
 .arvore .aula:hover { background: var(--superficie); color: var(--texto); }
-.arvore .aula.corrente { border-left-color: var(--ambar); color: var(--texto); background: var(--superficie); }
+.arvore .aula.corrente { border-left-color: var(--destaque); color: var(--texto); background: var(--superficie); }
 .arvore .aula .marca { width: 12px; flex: none; }
 .arvore .aula.feita .marca { color: var(--verde); }
 .arvore .aula .dur { margin-left: auto; font-size: 12px; }
@@ -174,14 +314,25 @@ video::-webkit-media-controls-fullscreen-button { display: none; }
   position: absolute; top: 10px; right: 10px; max-width: calc(100% - 20px);
   display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center;
 }
-/* --fundo com 82% de opacidade: a mesma cor do painel, deixando o vídeo
-   aparecer por baixo. Sem sombra — a borda de 1px já separa do vídeo. */
+/*
+ * O HUD, as setas e a legenda NÃO seguem o tema — e isso é a coisa mais fácil
+ * de "consertar" errado deste arquivo.
+ *
+ * Eles não ficam sobre o painel, ficam sobre o VÍDEO, que é preto nos dois
+ * temas. Trocar estes valores por --texto/--borda/--superficie faria o chip
+ * virar texto escuro sobre tarja escura no tema claro: sumiria. Por isso os
+ * tokens --video-* existem, e por isso [data-tema="claro"] não os redefine —
+ * tests/tema.test.ts trava as duas metades dessa regra.
+ *
+ * A opacidade de 82% é a cor do painel escuro deixando o vídeo aparecer por
+ * baixo. Sem sombra: a borda de 1px já separa do vídeo.
+ */
 .chip {
-  background: rgba(14, 16, 19, .82); color: var(--texto);
-  border: 1px solid var(--borda); border-radius: 8px;
+  background: var(--video-fundo); color: var(--video-texto);
+  border: 1px solid var(--video-borda); border-radius: 8px;
   padding: 4px 9px; font-size: 12.5px; line-height: 1.45;
 }
-.chip.on { border-color: var(--ambar); color: var(--ambar); }
+.chip.on { border-color: var(--video-destaque); color: var(--video-destaque); }
 
 /* As setas ocupam a altura do vídeo menos a faixa dos controles nativos, e
    só os botões recebem clique — o miolo continua sendo do <video>. */
@@ -191,7 +342,7 @@ video::-webkit-media-controls-fullscreen-button { display: none; }
 }
 .cena .nav button {
   pointer-events: auto; width: 44px; height: 66px; font-size: 26px; line-height: 1;
-  background: rgba(14, 16, 19, .82); border-color: var(--borda);
+  background: var(--video-fundo); color: var(--video-texto); border-color: var(--video-borda);
 }
 /* Primeira e última aula: a seta some, em vez de ficar clicável sem destino. */
 .cena .nav button:disabled { opacity: 0; pointer-events: none; }
@@ -209,7 +360,7 @@ video::-webkit-media-controls-fullscreen-button { display: none; }
 /* Uma caixa só para a fala inteira, e não uma por linha: com fundo por linha
    as emendas aparecem como listras entre elas. */
 .cena .legenda > span {
-  display: inline-block; background: rgba(14, 16, 19, .86); color: var(--texto);
+  display: inline-block; background: var(--video-tarja); color: var(--video-texto);
   border-radius: 6px; padding: .18em .5em;
 }
 `;
@@ -230,9 +381,9 @@ export const CSS_TRANSCRICAO = `
   border-radius: 6px; align-items: baseline;
 }
 .transc .trecho:hover { background: var(--superficie); }
-.transc .trecho.ativo { color: var(--ambar); }
+.transc .trecho.ativo { color: var(--destaque); }
 .transc .trecho .t { color: var(--secundario); font-size: 12px; flex: none; width: 52px; }
-.transc .trecho.ativo .t { color: var(--ambar); }
+.transc .trecho.ativo .t { color: var(--destaque); }
 
 .nota textarea {
   width: 100%; min-height: 110px; resize: vertical;
@@ -240,7 +391,7 @@ export const CSS_TRANSCRICAO = `
   border: 1px solid var(--borda); border-radius: 10px; padding: 12px;
   font: inherit; line-height: 1.5;
 }
-.nota textarea:focus { outline: none; border-color: var(--ambar); }
+.nota textarea:focus { outline: none; border-color: var(--destaque); }
 `;
 
 /**
@@ -252,8 +403,18 @@ export const CSS_ADMIN = `
 .dono { margin-top: 44px; }
 .dono h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
            color: var(--secundario); font-weight: 600; margin: 26px 0 12px; }
-.dono .cartao h2 { font-size: 22px; }
-.dono .cartao.alerta { border-color: var(--ambar); }
+/*
+ * Cartão de NÚMERO: o número domina, a legenda recua.
+ *
+ * O que se lê aqui é "18,82 GB", "231 de 231", "1 divergente" — o resto é
+ * rodapé. Em 22px o número tinha quase o peso do texto embaixo dele e o
+ * cartão virava um parágrafo curto; em 30px, com a legenda um degrau abaixo
+ * da meta comum, o olho pega o número de longe e só desce se quiser.
+ */
+.dono .cartao h2 { font-size: 30px; line-height: 1.2; margin: 0 0 3px; letter-spacing: -.02em; }
+.dono .cartao .meta { font-size: 12.5px; }
+.dono .cartao .meta + .meta { margin-top: 2px; }
+.dono .cartao.alerta { border-color: var(--destaque); }
 .dono .ferramentas { display: flex; gap: 10px; flex-wrap: wrap; }
 
 table.divs { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -283,8 +444,8 @@ export const CSS_MARKDOWN = `
 .md hr { border: 0; border-top: 1px solid var(--borda); margin: 26px 0; }
 .md ul, .md ol { margin: 0 0 14px; padding-left: 22px; }
 .md li { margin: 4px 0; }
-.md a { color: var(--ambar); border-bottom: 1px solid transparent; }
-.md a:hover { border-bottom-color: var(--ambar); }
+.md a { color: var(--destaque); border-bottom: 1px solid transparent; }
+.md a:hover { border-bottom-color: var(--destaque); }
 .md code { background: var(--elevada); padding: 1px 5px; border-radius: 5px; font-size: 13px; }
 .md pre { background: var(--superficie); border: 1px solid var(--borda);
           border-radius: 10px; padding: 14px; overflow-x: auto; }

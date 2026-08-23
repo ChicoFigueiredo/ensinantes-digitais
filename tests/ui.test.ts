@@ -5,8 +5,11 @@ import { HOME_JS } from "../src/ui/home.ts";
 
 test("a página traz os tokens do tema escuro", () => {
   expect(PAGINA).toContain("--fundo: #0e1013");
-  expect(PAGINA).toContain("--ambar: #e8963c");
+  // O token de destaque guarda um âmbar no escuro e um OCRE no claro — nome de
+  // cor que não é a cor apodrece. Ver tests/tema.test.ts para o resto da regra.
+  expect(PAGINA).toContain("--destaque: #e8963c");
   expect(PAGINA).toContain("--verde: #4ea672");
+  expect(PAGINA).not.toContain("--ambar");
 });
 
 test("números de tempo são tabulares", () => {
