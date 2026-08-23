@@ -23,6 +23,7 @@ import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { dentroDoAcervo } from "./arquivos.ts";
+import { WSL_DISTRO } from "./config.ts";
 
 export interface Revelado {
   ok: boolean;
@@ -132,7 +133,7 @@ function psRevelar(win: string): string {
 
 /** Estamos num WSL? O acervo aqui mora num disco Windows montado. */
 function noWsl(): boolean {
-  return existsSync("/proc/sys/fs/binfmt_misc/WSLInterop") || !!process.env.WSL_DISTRO_NAME;
+  return existsSync("/proc/sys/fs/binfmt_misc/WSLInterop") || !!WSL_DISTRO;
 }
 
 /**

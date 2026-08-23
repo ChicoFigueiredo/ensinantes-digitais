@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 import {
-  ACERVO, DB_PATH, PAINEL_PORTA, USUARIOS, USUARIO_PADRAO,
+  ACERVO, BASE_DIR, DB_PATH, PAINEL_PORTA, USUARIOS, USUARIO_PADRAO,
   LIMIAR_PALAVRAS, LIMIAR_SIMILARIDADE,
 } from "../src/config.ts";
 
@@ -27,4 +28,21 @@ test("o banco fica na raiz do projeto, não no acervo", () => {
 test("os limiares de divergência têm os valores da spec", () => {
   expect(LIMIAR_PALAVRAS).toBe(0.85);
   expect(LIMIAR_SIMILARIDADE).toBe(0.75);
+});
+
+// Achado 10 da revisão final: `src/revelar.ts` lia `process.env.WSL_DISTRO_NAME`
+// direto. Era a única ocorrência fora daqui, e a regra só vale enquanto não tem
+// exceção — por isso o teste varre o `src/` inteiro, e não aquele arquivo.
+
+test("só o config.ts lê process.env em todo o src/", async () => {
+  const arquivos = [...new Bun.Glob("**/*.ts").scanSync(join(BASE_DIR, "src"))].sort();
+  expect(arquivos.length).toBeGreaterThan(10);
+
+  const culpados: string[] = [];
+  for (const arquivo of arquivos) {
+    if (arquivo === "config.ts") continue;
+    const fonte = await Bun.file(join(BASE_DIR, "src", arquivo)).text();
+    if (/process\.env/.test(fonte)) culpados.push(arquivo);
+  }
+  expect(culpados).toEqual([]);
 });

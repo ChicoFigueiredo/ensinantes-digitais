@@ -27,6 +27,14 @@ export const SCRIPTS = join(BASE_DIR, "scripts");
 export const PAINEL_PORTA = Number(process.env.ED_PAINEL_PORTA ?? 17789);
 export const PAINEL_HOST = process.env.ED_PAINEL_HOST ?? "127.0.0.1";
 
+/**
+ * Nome da distro, quando estamos dentro do WSL — o próprio WSL a põe no
+ * ambiente. Vale como segunda pista para `noWsl()` (src/revelar.ts), atrás do
+ * `/proc/sys/fs/binfmt_misc/WSLInterop`. Mora aqui, e não lá, porque este é o
+ * único arquivo que lê `process.env`.
+ */
+export const WSL_DISTRO = process.env.WSL_DISTRO_NAME ?? "";
+
 /** Dois usuários fixos. Não há cadastro, e isso é escopo, não limitação. */
 export const USUARIOS = ["chico", "procopio"] as const;
 export type Usuario = (typeof USUARIOS)[number];
