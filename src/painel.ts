@@ -19,7 +19,9 @@
  */
 import type { Database } from "bun:sqlite";
 
-import { LIMIAR_PALAVRAS, LIMIAR_SIMILARIDADE, PAINEL_HOST, type Usuario } from "./config.ts";
+import {
+  BANCO_DE_TESTE, DB_PATH, LIMIAR_PALAVRAS, LIMIAR_SIMILARIDADE, PAINEL_HOST, type Usuario,
+} from "./config.ts";
 import {
   aplicarSync, lerNotas, lerPrefs, lerProgresso, registrar, tocarSessao, ultimoAberto,
 } from "./db.ts";
@@ -446,6 +448,10 @@ export function servir(db: Database, porta: number): void {
       if (p !== porta) console.log(`porta ${p - 1} em uso — tentando ${p}…`);
       Bun.serve({ hostname: PAINEL_HOST, port: p, fetch: (req) => fetchSeguro(db, req) });
       console.log(`painel em http://${PAINEL_HOST}:${p}`);
+      // Quem sobe um painel de teste precisa VER que é de teste. Sem esta
+      // linha, a tela é idêntica à do banco de verdade, e marcar aula achando
+      // que é teste (ou o contrário) só se descobre depois.
+      if (BANCO_DE_TESTE) console.log(`  banco de TESTE: ${DB_PATH}`);
 
       // O acervo tem redundância; `ensinantes.db` não. Vídeo e PDF se
       // recuperam do disco original, e o catálogo se refaz com `bun run scan`

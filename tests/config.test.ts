@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import {
   ACERVO, BASE_DIR, DB_PATH, PAINEL_PORTA, USUARIOS, USUARIO_PADRAO,
@@ -45,4 +45,26 @@ test("só o config.ts lê process.env em todo o src/", async () => {
     if (/process\.env/.test(fonte)) culpados.push(arquivo);
   }
   expect(culpados).toEqual([]);
+});
+
+// A saída que impede a próxima limpeza de teste de apagar dado de verdade.
+// Já aconteceu: um agente subiu o painel real, clicou para conferir a tela e
+// depois apagou as linhas que criou — levando junto uma preferência que era do
+// dono. Só voltou porque a cópia de `backup.ts` existia.
+test("ED_BANCO desvia o painel para outro banco, e o padrão continua o de produção", async () => {
+  const raiz = dirname(import.meta.dir);
+
+  const padrao = Bun.spawnSync(["bun", "-e",
+    'const c = await import("./src/config.ts"); console.log(c.DB_PATH, c.BANCO_DE_TESTE);'],
+    { cwd: raiz, env: { ...process.env, ED_BANCO: "" } });
+  const saidaPadrao = padrao.stdout.toString().trim();
+  expect(saidaPadrao).toContain("ensinantes.db");
+  expect(saidaPadrao).toEndWith("false");
+
+  const desviado = Bun.spawnSync(["bun", "-e",
+    'const c = await import("./src/config.ts"); console.log(c.DB_PATH, c.BANCO_DE_TESTE);'],
+    { cwd: raiz, env: { ...process.env, ED_BANCO: "/tmp/painel-de-teste.db" } });
+  const saidaDesviada = desviado.stdout.toString().trim();
+  expect(saidaDesviada).toBe("/tmp/painel-de-teste.db true");
+  expect(saidaDesviada).not.toContain("ensinantes.db");
 });

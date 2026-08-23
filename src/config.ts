@@ -14,8 +14,27 @@ export const BASE_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
 const acervoBruto = process.env.ED_ACERVO ?? "./acervo";
 export const ACERVO = isAbsolute(acervoBruto) ? acervoBruto : resolve(BASE_DIR, acervoBruto);
 
-/** O banco fica no projeto, NUNCA no acervo: o acervo é conteúdo, não estado. */
-export const DB_PATH = join(BASE_DIR, "ensinantes.db");
+/**
+ * O banco fica no projeto, NUNCA no acervo: o acervo é conteúdo, não estado.
+ *
+ * `ED_BANCO` existe para quem precisa subir um painel de VERDADE sem tocar no
+ * banco de verdade — conferir uma tela, clicar, marcar aula. Sem essa saída, a
+ * única forma de testar clicando era usar o banco real e depois apagar o que
+ * foi criado, e apagar linha de progresso/nota/preferência é destruir o que o
+ * dono levou meses fazendo. Já aconteceu aqui: uma limpeza de teste levou junto
+ * uma preferência que era de verdade, e só voltou porque a cópia em
+ * `backup.ts` existia.
+ *
+ *   ED_BANCO=/tmp/painel-teste.db bun run src/cli.ts scan
+ *   ED_BANCO=/tmp/painel-teste.db bun run src/cli.ts painel
+ */
+const bancoBruto = process.env.ED_BANCO ?? "";
+export const DB_PATH = bancoBruto
+  ? (isAbsolute(bancoBruto) ? bancoBruto : resolve(BASE_DIR, bancoBruto))
+  : join(BASE_DIR, "ensinantes.db");
+
+/** Verdadeiro quando o painel NÃO está no banco de produção. */
+export const BANCO_DE_TESTE = bancoBruto !== "";
 export const RELATORIOS = join(BASE_DIR, "relatorios");
 export const SCRIPTS = join(BASE_DIR, "scripts");
 
