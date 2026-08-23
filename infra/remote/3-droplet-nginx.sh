@@ -14,15 +14,23 @@
 set -euo pipefail
 cd "$(dirname "$0")" && source ./config.sh
 
-echo "conferindo o DNS de $DOMINIO…"
-IP_DOM=$(getent hosts "$DOMINIO" | awk '{print $1}' | head -1)
+# Todos os nomes que vão para o certificado: o canônico primeiro, depois os
+# apelidos. O Let's Encrypt valida CADA UM batendo na porta 80 daquele nome —
+# um apelido sem DNS não dá aviso, derruba a emissão inteira e deixa o site
+# sem certificado nenhum. Por isso a conferência é de todos, antes de começar.
+TODOS_OS_NOMES=("$DOMINIO" ${DOMINIOS_ALIAS[@]+"${DOMINIOS_ALIAS[@]}"})
+
 IP_DROP=$(ssh "$DROPLET" 'curl -s -4 ifconfig.me')
-[[ "$IP_DOM" == "$IP_DROP" ]] || {
-  echo "  $DOMINIO → ${IP_DOM:-nada} mas o droplet é $IP_DROP"
-  echo "  Acerte o DNS antes: o Let's Encrypt valida batendo na porta 80 deste nome."
-  exit 1
-}
-echo "  ok: $IP_DOM"
+for nome in "${TODOS_OS_NOMES[@]}"; do
+  echo "conferindo o DNS de $nome…"
+  IP_DOM=$(getent hosts "$nome" | awk '{print $1}' | head -1)
+  [[ "$IP_DOM" == "$IP_DROP" ]] || {
+    echo "  $nome → ${IP_DOM:-nada} mas o droplet é $IP_DROP"
+    echo "  Acerte o DNS antes: o Let's Encrypt valida batendo na porta 80 deste nome."
+    exit 1
+  }
+  echo "  ok: $IP_DOM"
+done
 
 echo
 echo "gerando as senhas no droplet, uma por usuário — cada uma aparece UMA vez,"
@@ -45,7 +53,7 @@ echo "Anote agora — daqui em diante só existe o bcrypt no droplet."
 
 ssh "$DROPLET" 'chmod 640 /etc/nginx/ensinantes.htpasswd && chown root:www-data /etc/nginx/ensinantes.htpasswd'
 
-ssh "$DROPLET" "DOMINIO='$DOMINIO' PORTA='$PORTA' EMAIL='$EMAIL_CERT' BLOQ='$ROTAS_BLOQUEADAS' bash -s" <<'REMOTO'
+ssh "$DROPLET" "DOMINIO='$DOMINIO' ALIASES='${DOMINIOS_ALIAS[*]-}' PORTA='$PORTA' EMAIL='$EMAIL_CERT' BLOQ='$ROTAS_BLOQUEADAS' bash -s" <<'REMOTO'
 set -euo pipefail
 
 # auth_basic vai DENTRO das locations, nunca no server. Se fosse no server, a
@@ -104,17 +112,37 @@ server {
 }
 EOF
 
+# Os apelidos NÃO servem o painel: só mandam para o canônico. Ver o porquê em
+# config.sh — o navegador guarda a senha do auth_basic por origem, e servir os
+# dois nomes faria a senha parecer ter parado de funcionar ao trocar de nome.
+if [ -n "${ALIASES// /}" ]; then
+  {
+    echo "server {"
+    echo "    listen 80;"
+    echo "    listen [::]:80;"
+    echo "    server_name $ALIASES;"
+    echo "    return 301 https://$DOMINIO\$request_uri;"
+    echo "}"
+  } > "/etc/nginx/sites-available/$DOMINIO.apelidos"
+  ln -sfn "/etc/nginx/sites-available/$DOMINIO.apelidos" "/etc/nginx/sites-enabled/$DOMINIO.apelidos"
+fi
+
 ln -sfn "/etc/nginx/sites-available/$DOMINIO" "/etc/nginx/sites-enabled/$DOMINIO"
 nginx -t
 systemctl reload nginx
 
 # --redirect põe o 301 de http para https. A renovação já fica agendada pelo
 # próprio certbot (systemd timer).
-certbot --nginx -d "$DOMINIO" --non-interactive --agree-tos -m "$EMAIL" --redirect
+# Um -d por nome. O primeiro é o canônico e nomeia o diretório do
+# certificado em /etc/letsencrypt/live/.
+ARGS_D=(-d "$DOMINIO")
+for a in $ALIASES; do ARGS_D+=(-d "$a"); done
+certbot --nginx "${ARGS_D[@]}" --non-interactive --agree-tos -m "$EMAIL" --redirect
 REMOTO
 
 echo
 echo "───────────────────────────────────────────────"
 echo " https://$DOMINIO"
+echo " apelidos com 301: ${DOMINIOS_ALIAS[*]:-nenhum}"
 echo " usuários: ${USUARIOS_PAINEL[*]} (senhas impressas acima, uma vez só)"
 echo "───────────────────────────────────────────────"

@@ -109,6 +109,19 @@ else
   printf '  \033[33maviso\033[0m sem SENHA_PROCOPIO no ambiente: pulei as conferências de procopio\n'
 fi
 
+# Cada apelido tem de responder 301 para o canônico, e sob HTTPS — ou seja, o
+# certificado precisa cobrir o apelido também. Um apelido que ficou de fora do
+# certbot só falha na hora em que alguém digita aquele nome, com aviso de
+# segurança no navegador, e não na instalação.
+for apelido in ${DOMINIOS_ALIAS[@]+"${DOMINIOS_ALIAS[@]}"}; do
+  DESTINO=$(curl -s -o /dev/null -w '%{redirect_url}' --max-time 20 "https://$apelido/")
+  case "$DESTINO" in
+    "https://$DOMINIO/"*) ok "$apelido redireciona para o canônico" ;;
+    "") nao "$apelido não redirecionou (certificado não cobre este nome?)" ;;
+    *)  nao "$apelido redirecionou para $DESTINO, e não para https://$DOMINIO/" ;;
+  esac
+done
+
 echo
 [[ $falhou -eq 0 ]] && echo "tudo certo." || echo "há elo quebrado acima."
 exit $falhou

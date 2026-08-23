@@ -1,5 +1,20 @@
 # Acesso remoto ao painel
 
+> **Nada disto foi executado.** Os scripts estão escritos e conferidos por
+> sintaxe, mas nenhum comando saiu daqui para o droplet: os passos exigem as
+> duas senhas e o acesso administrativo, que são do dono. Rodar é com você.
+
+**Dois nomes chegam no mesmo painel.** O canônico é
+`ensinantesdigitais.chicofigueiredo.com.br` (sem hífen); o apelido
+`ensinantes-digitais.chicofigueiredo.com.br` (com hífen) responde com 301 para
+ele. Os DOIS precisam de registro de DNS apontando para o droplet **antes** do
+passo 3 — o Let's Encrypt valida cada nome separadamente, e um apelido sem DNS
+não gera aviso: derruba a emissão inteira e o site fica sem certificado nenhum.
+
+O servidor `ssh.chico-figueiredo.com.br` e o `ssh.lojapopcorn.com.br` são a
+mesma máquina. Os scripts usam o segundo, que é o que o túnel do focus-scrap já
+usa — e é por isso que a porta aqui é a 17789 e não a 17788.
+
 Como **https://ensinantesdigitais.chicofigueiredo.com.br** existe, e como
 refazer isso do zero.
 
@@ -203,12 +218,34 @@ pronto e não instalado (as duas linhas para ligar estão no cabeçalho dele).
 ## Trocar uma senha
 
 ```bash
-ssh root@ssh.lojapopcorn.com.br htpasswd -B /etc/nginx/ensinantes.htpasswd chico
-ssh root@ssh.lojapopcorn.com.br htpasswd -B /etc/nginx/ensinantes.htpasswd procopio
+ssh -t root@ssh.lojapopcorn.com.br htpasswd -B /etc/nginx/ensinantes.htpasswd chico
+ssh -t root@ssh.lojapopcorn.com.br htpasswd -B /etc/nginx/ensinantes.htpasswd procopio
 ```
 
-Cada comando troca só a senha do usuário indicado — o outro fica intacto. Não
-precisa recarregar o nginx: o arquivo é lido a cada requisição.
+O `-t` não é enfeite: o `htpasswd` PERGUNTA a senha, e `ssh` com comando não
+aloca terminal. Sem ele o prompt não aparece direito e a troca falha de um
+jeito confuso. Com `-t`, ele pede duas vezes e nada da senha passa pela linha
+de comando — ou seja, não fica no histórico do shell nem na lista de processos.
+
+Cada comando troca só a senha do usuário indicado; o outro fica intacto. Não
+precisa recarregar o nginx: o arquivo é lido a cada requisição, então a senha
+nova vale na requisição seguinte.
+
+Conferir que funcionou, sem abrir o navegador:
+
+```bash
+# 401 com a senha velha, 200 com a nova
+curl -s -o /dev/null -w '%{http_code}\n' -u chico https://ensinantesdigitais.chicofigueiredo.com.br/
+```
+
+**Acrescentar um terceiro usuário** é o mesmo comando com outro nome — o
+`htpasswd` cria a entrada se ela não existir. Mas o painel só conhece `chico` e
+`procopio`: qualquer outro nome autentica no nginx e cai como o MENOS
+privilegiado do lado do app (`USUARIOS` em `src/config.ts`, `quemE` em
+`src/usuario.ts`). Para um terceiro usuário de verdade, os dois lados mudam.
+
+**Nunca** use `-b` (senha na linha de comando) nem `-c` fora da instalação: o
+`-c` RECRIA o arquivo e apaga o outro usuário junto.
 
 ## Certificado
 
