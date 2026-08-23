@@ -159,8 +159,15 @@ export const CSS_CURSO = `
  */
 export const CSS_CENA = `
 .cena { position: relative; background: #000; }
-.cena:fullscreen { display: grid; place-items: center; width: 100vw; height: 100vh; }
-.cena:fullscreen video { max-height: 100vh; height: 100vh; object-fit: contain; }
+/* Em tela cheia quem vai é o PALCO, porque ele sobrevive à troca de aula — a
+   cena é refeita a cada repintura, e o navegador cai fora da tela cheia quando
+   o elemento sai do documento. Ver alternarTelaCheia em player.ts. Aqui o
+   CSS faz o palco PARECER a cena: some com o título, as ferramentas, a
+   anotação e a transcrição, e a cena ocupa a tela. */
+.palco:fullscreen { background: #000; overflow: hidden; display: grid; place-items: center; }
+.palco:fullscreen > *:not(.cena) { display: none; }
+.palco:fullscreen .cena { width: 100vw; height: 100vh; display: grid; place-items: center; }
+.palco:fullscreen .cena video { max-height: 100vh; height: 100vh; object-fit: contain; }
 video::-webkit-media-controls-fullscreen-button { display: none; }
 
 .cena .hud {

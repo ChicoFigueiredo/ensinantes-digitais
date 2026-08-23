@@ -207,7 +207,7 @@ test("cada chip mostra o estado atual no próprio rótulo", () => {
   expect(html).toContain(">1,5×<");
   expect(html).toContain(">Aa 22<");
   expect(html).toContain(">Auto ▶<");
-  expect(hudDoVideo(true, ESTADO)).toContain(">Auto —<");
+  expect(hudDoVideo(true, ESTADO)).toContain(">Auto<");
 });
 
 test("CC aceso é o CC com a classe que o pinta de âmbar", () => {
@@ -265,7 +265,7 @@ test("o chip CC apaga e acende a legenda, e desligar põe a faixa em 'disabled'"
 
 test("o chip do autoplay liga e desliga, e enfileira '1'/'0'", () => {
   const p = abrirPainel([AULA(1), AULA(2)]);
-  expect(chip(p, "bAuto")!.textContent).toBe("Auto —");
+  expect(chip(p, "bAuto")!.textContent).toBe("Auto");
 
   clicar(p, "bAuto");
   expect(chip(p, "bAuto")!.textContent).toBe("Auto ▶");
@@ -273,7 +273,7 @@ test("o chip do autoplay liga e desliga, e enfileira '1'/'0'", () => {
   expect(p.prefsNaFila()).toEqual([{ tipo: "pref", nome: "autoplay", valor: "1" }]);
 
   clicar(p, "bAuto");
-  expect(chip(p, "bAuto")!.textContent).toBe("Auto —");
+  expect(chip(p, "bAuto")!.textContent).toBe("Auto");
   expect(p.prefsNaFila().at(-1)).toEqual({ tipo: "pref", nome: "autoplay", valor: "0" });
 });
 
@@ -452,10 +452,21 @@ test("são estas funções que vão para o navegador, não cópias manuscritas d
   }
 });
 
-test("a tela cheia vai na cena, e o botão nativo do player some", () => {
-  // Mandando o <video>, o HUD e a legenda ficariam de fora: são irmãos dele.
-  expect(PAGINA).toContain("document.getElementById('cena')?.requestFullscreen?.()");
+test("a tela cheia vai no palco — o único elemento que sobrevive à troca de aula", () => {
+  // Duas coisas erradas que este teste existe para impedir:
+  //
+  // 1. tela cheia no <video>: o HUD, as setas e a legenda são IRMÃOS dele, não
+  //    filhos, e ficariam de fora. Daí o botão nativo do player estar escondido.
+  // 2. tela cheia na CENA: a cena é refeita a cada `pintarPalco`, então o
+  //    elemento em tela cheia sai do documento e o navegador cai fora sozinho.
+  //    Com o autoplay ligado isso acontecia no fim de CADA aula.
+  expect(PAGINA).toContain("document.querySelector('.palco')?.requestFullscreen?.()");
+  expect(PAGINA).not.toContain("getElementById('cena')?.requestFullscreen");
   expect(PAGINA).toContain("video::-webkit-media-controls-fullscreen-button { display: none; }");
+
+  // E o CSS tem de fazer o palco PARECER a cena lá dentro: sem esconder os
+  // irmãos, a tela cheia mostraria título, anotação e transcrição junto.
+  expect(PAGINA).toContain(".palco:fullscreen > *:not(.cena) { display: none; }");
 });
 
 test("o tamanho da legenda vai na raiz do documento, para valer em tela cheia", () => {

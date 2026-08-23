@@ -122,7 +122,7 @@ export function hudDoVideo(temLegenda: boolean, e: EstadoDoHud): string {
 
   chips.push(`<button class="chip${e.autoplay ? " on" : ""}" id="bAuto"
     title="${e.autoplay ? "Ao terminar, emenda na próxima aula" : "Ao terminar, para nesta aula"}"
-    >${e.autoplay ? "Auto ▶" : "Auto —"}</button>`);
+    >${e.autoplay ? "Auto ▶" : "Auto"}</button>`);
 
   chips.push(`<button class="chip" id="bTela" title="Tela cheia (F)">⛶</button>`);
 
@@ -301,7 +301,7 @@ function refletirHud() {
 
   const bAuto = document.getElementById('bAuto');
   if (bAuto) {
-    bAuto.textContent = e.autoplay ? 'Auto ▶' : 'Auto —';
+    bAuto.textContent = e.autoplay ? 'Auto ▶' : 'Auto';
     bAuto.classList.toggle('on', e.autoplay);
     bAuto.title = e.autoplay
       ? 'Ao terminar, emenda na próxima aula'
@@ -354,13 +354,22 @@ function pintarLegenda() {
 
 // --- tela cheia -------------------------------------------------------------
 /**
- * Tela cheia vai na CENA, nunca no \`<video>\`: mandando o vídeo, o HUD, as
- * setas e a legenda ficam de fora — todos são irmãos do \`<video>\`, não filhos.
- * É por isso que o CSS esconde o botão nativo de tela cheia do player.
+ * Tela cheia vai no PALCO, nunca no \`<video>\` e nunca na cena.
+ *
+ * Não no vídeo porque o HUD, as setas e a legenda são IRMÃOS dele, não filhos:
+ * mandando só o vídeo, tudo isso fica de fora. É por isso que o CSS esconde o
+ * botão nativo de tela cheia do player.
+ *
+ * E não na cena porque a cena é REFEITA a cada \`pintarPalco\`: o elemento em
+ * tela cheia sai do documento e o navegador cai fora da tela cheia sozinho.
+ * Com o autoplay ligado isso acontecia no fim de CADA aula — justamente a
+ * combinação para a qual estes dois controles existem. O palco sobrevive
+ * (só o \`innerHTML\` dele é trocado), então a tela cheia atravessa a troca.
+ * Quem esconde o resto do palco lá dentro é o CSS, em \`.palco:fullscreen\`.
  */
 function alternarTelaCheia() {
   if (document.fullscreenElement) { document.exitFullscreen?.(); return; }
-  document.getElementById('cena')?.requestFullscreen?.();
+  document.querySelector('.palco')?.requestFullscreen?.();
 }
 
 // Registrados UMA vez, no carregamento, e não a cada \`pintarPalco\`: ouvinte de
@@ -381,9 +390,9 @@ document.addEventListener('keydown', (e) => {
 // desenho inteiro existe para evitar.
 document.addEventListener('fullscreenchange', () => {
   const v = document.getElementById('v');
-  const cena = document.getElementById('cena');
-  if (!v || !cena || document.fullscreenElement !== v) return;
-  document.exitFullscreen?.()?.then?.(() => cena.requestFullscreen?.())?.catch?.(() => {});
+  const palco = document.querySelector('.palco');
+  if (!v || !palco || document.fullscreenElement !== v) return;
+  document.exitFullscreen?.()?.then?.(() => palco.requestFullscreen?.())?.catch?.(() => {});
 });
 
 function pintarPalco() {
