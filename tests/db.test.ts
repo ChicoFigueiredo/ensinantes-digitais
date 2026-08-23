@@ -73,26 +73,35 @@ test("presença expira depois da janela", () => {
   expect(outroOnline(db, "chico", 5)).toBe(false);
 });
 
-test("as consultas do cli.ts rodam contra o esquema de verdade", () => {
+// Achado 11 da revisão final: este teste redigitava as consultas de
+// src/cli.ts como literais aqui dentro e afirmava `not.toThrow()` sobre a
+// CÓPIA. Quebrar a consulta lá continuava passando aqui. `tests/cli.test.ts`
+// já resolvia o problema análogo do jeito certo — lendo o fonte —, e é o que
+// este faz agora: as consultas que rodam contra o esquema são as que estão em
+// cli.ts, extraídas de lá.
+
+test("as consultas do cli.ts rodam contra o esquema de verdade", async () => {
   const db = novo();
-  // Estas são as três consultas de src/cli.ts. Elas foram escritas antes do
-  // esquema existir; este teste é o que garante que não divergiram dele.
-  expect(() => db.query(`
-    SELECT c.titulo, c.estado, COUNT(DISTINCT m.id) modulos, COUNT(i.id) itens
-      FROM cursos c LEFT JOIN modulos m ON m.curso_id = c.id
-                    LEFT JOIN itens i ON i.modulo_id = m.id
-     GROUP BY c.id ORDER BY c.posicao`).all()).not.toThrow();
+  const fonte = await Bun.file(new URL("../src/cli.ts", import.meta.url)).text();
+  // Literal (aspas ou crase) que começa em SELECT/UPDATE, com o mesmo
+  // delimitador fechando. As consultas do cli.ts não interpolam nada.
+  const consultas = [...fonte.matchAll(/(["`])(\s*(?:SELECT|UPDATE|INSERT|DELETE)[\s\S]*?)\1/g)]
+    .map((m) => m[2]!.trim());
 
-  expect(() => db.query(
-    "SELECT transcricao_estado estado, COUNT(*) n FROM itens WHERE tipo='video' GROUP BY 1").all()
-  ).not.toThrow();
+  // Sem isto, um regex que deixasse de casar faria o teste passar vazio — que
+  // é a mesma falsa segurança de antes, por outro caminho.
+  expect(consultas.length).toBeGreaterThanOrEqual(4);
+  expect(consultas.filter((c) => c.startsWith("SELECT")).length).toBeGreaterThanOrEqual(2);
+  expect(consultas.filter((c) => c.startsWith("UPDATE")).length).toBeGreaterThanOrEqual(2);
 
-  expect(() => db.run(
-    "UPDATE itens SET transcricao_estado='pendente' WHERE tipo='video'")).not.toThrow();
-
-  expect(() => db.run(
-    "UPDATE itens SET transcricao_estado='pendente', transcricao_erro=NULL WHERE transcricao_estado='erro'")
-  ).not.toThrow();
+  for (const consulta of consultas) {
+    // `query` PREPARA a consulta: coluna ou tabela que não existe no esquema
+    // estoura aqui. O banco é `:memory:` e está vazio, então o UPDATE não
+    // toca em nada.
+    let erro: string | null = null;
+    try { db.query(consulta).all(); } catch (e) { erro = String(e); }
+    expect([consulta, erro]).toEqual([consulta, null]);
+  }
 });
 
 test("ultimoAberto ignora o que já foi concluído", () => {
