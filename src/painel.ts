@@ -21,7 +21,7 @@ import type { Database } from "bun:sqlite";
 
 import { LIMIAR_PALAVRAS, LIMIAR_SIMILARIDADE, PAINEL_HOST, type Usuario } from "./config.ts";
 import {
-  aplicarSync, lerNotas, lerPrefs, lerProgresso, registrar, tocarSessao, ultimoAberto, type OpSync,
+  aplicarSync, lerNotas, lerPrefs, lerProgresso, registrar, tocarSessao, ultimoAberto,
 } from "./db.ts";
 import { dentroDoAcervo, servirArquivo } from "./arquivos.ts";
 import { lerTrechos, srtParaVtt } from "./legenda.ts";
@@ -296,10 +296,14 @@ export async function montarResposta(db: Database, req: Request): Promise<Respon
   // NUNCA bloquear no nginx: sem ela o painel não fica somente-leitura, fica
   // quebrado, com a fila enchendo para sempre.
   if (rota === "/api/sync" && req.method === "POST") {
-    const corpo = (await req.json().catch(() => null)) as { ops?: OpSync[] } | null;
+    const corpo = (await req.json().catch(() => null)) as { ops?: unknown[] } | null;
     if (!corpo || !Array.isArray(corpo.ops)) {
       return Response.json({ ok: false, msg: "fila inválida" }, { status: 400 });
     }
+    // Op malformada é recusada uma a uma dentro de `aplicarSync`, e a resposta
+    // sai 200 mesmo assim: um 500 aqui deixaria o lote inteiro na fila do
+    // localStorage, e ela reenviaria o mesmo lote a cada 8 s para sempre,
+    // engolindo em silêncio tudo que a pessoa marcasse depois.
     const r = aplicarSync(db, usuario, corpo.ops);
     return Response.json({
       ok: true, ...r,

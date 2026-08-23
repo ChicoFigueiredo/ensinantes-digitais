@@ -163,13 +163,57 @@ export type OpSync =
   | { tipo: "pref"; nome: string; valor: string };
 
 /**
+ * Confere a FORMA de uma operação. Devolve o motivo da recusa, ou `null`.
+ *
+ * A fila do navegador mora no `localStorage` e sobrevive a recarga e a troca
+ * de versão do painel. Uma op malformada — de uma versão antiga, de um dedo
+ * no console — fazia `aplicarSync` estourar, o lote inteiro virar 500, e
+ * `escoar` (src/ui/player.ts) nunca tirar nada da fila, porque ele só limpa
+ * quando `r.ok`. O mesmo lote envenenado voltava a cada 8 s para sempre, e
+ * tudo que a pessoa marcasse ou anotasse depois se empilhava atrás dele sem
+ * nunca chegar ao banco. Perda silenciosa e permanente — o oposto exato do
+ * que a fila existe para fazer.
+ */
+export function motivoDeRecusa(op: unknown): string | null {
+  if (!op || typeof op !== "object") return "operação não é um objeto";
+  const o = op as Record<string, unknown>;
+  const semChave = typeof o.chave !== "string" || !o.chave.trim() ? "chave ausente" : null;
+
+  if (o.tipo === "progresso") {
+    return semChave ?? (typeof o.segundos === "number" && Number.isFinite(o.segundos)
+      ? null : "segundos não é número");
+  }
+  if (o.tipo === "nota") {
+    return semChave ?? (typeof o.texto === "string" ? null : "texto não é texto");
+  }
+  if (o.tipo === "pref") {
+    if (typeof o.nome !== "string" || !o.nome.trim()) return "nome ausente";
+    return typeof o.valor === "string" ? null : "valor não é texto";
+  }
+  // O `else` do if/else if antigo mandava QUALQUER tipo desconhecido para o
+  // ramo de `pref`, e ele chegava ao SQLite com `undefined`.
+  return `tipo desconhecido: ${JSON.stringify(o.tipo) ?? "sem tipo"}`;
+}
+
+export interface ResultadoSync {
+  aplicadas: number;
+  /** Uma entrada por op recusada, na ordem em que vieram. */
+  recusadas: { indice: number; motivo: string }[];
+}
+
+/**
  * Aplica um lote de escritas do painel.
  *
  * Toda operação é "deixe assim", nunca "some mais um" — por isso reenviar o
  * mesmo lote é inofensivo, e por isso o navegador pode tentar de novo depois de
  * uma piscada do túnel sem medo de duplicar.
+ *
+ * Uma op ruim é recusada SOZINHA: as demais gravam e o endpoint responde 200,
+ * para que a fila do cliente avance em vez de reenviar o lote para sempre. O
+ * que foi recusado vai para `eventos`, onde o dono lê — descartar em silêncio
+ * seria trocar um modo de falha ruidoso por um mudo.
  */
-export function aplicarSync(db: Database, usuario: Usuario, ops: OpSync[]): { aplicadas: number } {
+export function aplicarSync(db: Database, usuario: Usuario, ops: unknown[]): ResultadoSync {
   const prog = db.prepare(`INSERT INTO progresso (usuario, chave, segundos, feito, updated_at)
     VALUES (?, ?, ?, ?, datetime('now'))
     ON CONFLICT(usuario, chave) DO UPDATE SET
@@ -185,6 +229,14 @@ export function aplicarSync(db: Database, usuario: Usuario, ops: OpSync[]): { ap
     ON CONFLICT(usuario, nome) DO UPDATE SET
       valor = excluded.valor, updated_at = excluded.updated_at`);
 
+  const boas: OpSync[] = [];
+  const recusadas: { indice: number; motivo: string }[] = [];
+  ops.forEach((op, indice) => {
+    const motivo = motivoDeRecusa(op);
+    if (motivo) recusadas.push({ indice, motivo });
+    else boas.push(op as OpSync);
+  });
+
   const lote = db.transaction((lista: OpSync[]) => {
     for (const op of lista) {
       if (op.tipo === "progresso") prog.run(usuario, op.chave, op.segundos, op.feito ? 1 : 0);
@@ -194,8 +246,12 @@ export function aplicarSync(db: Database, usuario: Usuario, ops: OpSync[]): { ap
       } else pref.run(usuario, op.nome, op.valor);
     }
   });
-  lote(ops);
-  return { aplicadas: ops.length };
+  lote(boas);
+
+  for (const r of recusadas) {
+    registrar(db, "erro", "sync", `op ${r.indice} recusada (${usuario}): ${r.motivo}`);
+  }
+  return { aplicadas: boas.length, recusadas };
 }
 
 export function tocarSessao(db: Database, usuario: Usuario): void {

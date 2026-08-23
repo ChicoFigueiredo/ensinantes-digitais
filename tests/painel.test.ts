@@ -384,3 +384,29 @@ test("o convidado não recebe nem as divergências nem as ilegíveis", async () 
   const proc = await (await pedir("/api/tudo?curso=c1", "procopio")).json();
   expect(proc.divergenciasIlegiveis).toBeUndefined();
 });
+
+test("/api/sync com lote misto responde 200: a fila do cliente avança", async () => {
+  const r = await pedir("/api/sync", "procopio", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ops: [
+      { tipo: "progresso", chave: "i:77", segundos: 30, feito: false },
+      { tipo: "xxx" },
+    ] }),
+  });
+  // 500 aqui deixaria este lote na fila do localStorage, reenviado a cada 8 s
+  // para sempre, com tudo que a pessoa marcasse depois empilhado atrás.
+  expect(r.status).toBe(200);
+  const j = await r.json();
+  expect(j.ok).toBe(true);
+  expect(j.aplicadas).toBe(1);
+  expect(j.recusadas).toEqual([{ indice: 1, motivo: 'tipo desconhecido: "xxx"' }]);
+  expect(j.progresso["i:77"]).toEqual({ segundos: 30, feito: false });
+});
+
+test("/api/sync com corpo que não é lista continua sendo 400", async () => {
+  const r = await pedir("/api/sync", "chico", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ops: "tudo" }),
+  });
+  expect(r.status).toBe(400);
+});
