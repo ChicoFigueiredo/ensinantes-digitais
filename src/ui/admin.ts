@@ -14,6 +14,9 @@ function cardsDeDono(d) {
 
   const fila = Object.fromEntries((d.fila || []).map(f => [f.estado, f.n]));
   const div = d.divergencias || [];
+  // Linhas de \`comparacao\` que não deram para ler. O servidor não derruba
+  // /api/tudo por causa delas, mas também não as engole em silêncio.
+  const ilegiveis = d.divergenciasIlegiveis || [];
   const recortes = d.disco?.recortes || {};
 
   return \`<section class="dono">
@@ -35,7 +38,9 @@ function cardsDeDono(d) {
       <a class="cartao \${div.length ? 'alerta' : ''}" href="#divergencias">
         <h2 class="num">\${div.length}</h2>
         <div class="meta">\${palavraPara(div.length, 'transcrição divergente', 'transcrições divergentes')}</div>
-        <div class="meta">\${div.length ? 'vale abrir e comparar' : 'nada destoando'}</div></a>
+        <div class="meta">\${div.length ? 'vale abrir e comparar' : 'nada destoando'}</div>
+        \${ilegiveis.length ? \`<div class="meta">\${plural(ilegiveis.length,
+          'comparação ilegível', 'comparações ilegíveis')}: \${esc(ilegiveis.join(', '))}</div>\` : ''}</a>
     </div>
 
     <h3>Tarefas</h3>

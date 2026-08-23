@@ -165,6 +165,44 @@ export function ehDivergente(comparacao: Comparacao): boolean {
   return encolheu || mudou;
 }
 
+export interface LinhaComparacao { id: number; titulo: string; comparacao: string }
+
+/**
+ * Separa as divergências do que não deu para ler.
+ *
+ * A versão anterior fazia `JSON.parse(l.comparacao)` cru dentro de um `.map`:
+ * UMA linha malformada estourava, `fetchSeguro` transformava em 500 e o dono
+ * perdia `/api/tudo` inteiro — árvore, progresso e notas junto. A home sumia
+ * por causa de um campo de diagnóstico.
+ *
+ * O gêmeo Python (`relatorio_divergencias`, em py/ensinantes/comparar.py) já
+ * faz assim: linha ruim vai para `malformados`, o relatório sai e ainda as
+ * anuncia. Quem escreve a coluna é o `json.dumps` de lá e ela sempre sai
+ * válida — isto é defesa em profundidade contra uma linha corrompida no
+ * banco, não contra o caminho normal.
+ */
+export function separarDivergencias(linhas: LinhaComparacao[]) {
+  const lista: { id: number; titulo: string; comparacao: Comparacao }[] = [];
+  const ilegiveis: string[] = [];
+
+  for (const l of linhas) {
+    let comparacao: unknown;
+    try {
+      comparacao = JSON.parse(l.comparacao);
+    } catch {
+      ilegiveis.push(l.titulo);
+      continue;
+    }
+    // `JSON.parse('null')` não lança, e desestruturar null lança — o mesmo
+    // 500 pela porta dos fundos.
+    if (!comparacao || typeof comparacao !== "object") { ilegiveis.push(l.titulo); continue; }
+    if (ehDivergente(comparacao as Comparacao)) {
+      lista.push({ id: l.id, titulo: l.titulo, comparacao: comparacao as Comparacao });
+    }
+  }
+  return { lista, ilegiveis };
+}
+
 function itemPorId(db: Database, id: number) {
   return db.query<{ rel_path: string; srt_path: string | null; titulo: string; tipo: string }, [number]>(
     "SELECT rel_path, srt_path, titulo, tipo FROM itens WHERE id = ?").get(id);
@@ -240,11 +278,13 @@ export async function montarResposta(db: Database, req: Request): Promise<Respon
       corpo.tarefas = estadoTarefas();
     }
     if (pode.verDivergencias) {
-      corpo.divergencias = db.query(`
-        SELECT id, titulo, comparacao FROM itens
-         WHERE comparacao IS NOT NULL ORDER BY id`).all()
-        .map((l: any) => ({ ...l, comparacao: JSON.parse(l.comparacao) }))
-        .filter((l: any) => ehDivergente(l.comparacao));
+      const { lista, ilegiveis } = separarDivergencias(
+        db.query<LinhaComparacao, []>(`
+          SELECT id, titulo, comparacao FROM itens
+           WHERE comparacao IS NOT NULL ORDER BY id`).all());
+      corpo.divergencias = lista;
+      // Só aparece quando há o que anunciar — como o aviso do relatório Python.
+      if (ilegiveis.length) corpo.divergenciasIlegiveis = ilegiveis;
     }
     return Response.json(corpo);
   }

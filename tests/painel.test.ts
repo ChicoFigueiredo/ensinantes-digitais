@@ -5,7 +5,9 @@ import { join } from "node:path";
 
 import { conectar } from "../src/db.ts";
 import { ACERVO, LIMIAR_PALAVRAS, LIMIAR_SIMILARIDADE } from "../src/config.ts";
-import { alvoExterno, ehDivergente, montarResposta, type Comparacao } from "../src/painel.ts";
+import {
+  alvoExterno, ehDivergente, montarResposta, separarDivergencias, type Comparacao,
+} from "../src/painel.ts";
 import { PAGINA } from "../src/ui/pagina.ts";
 
 let db: Database;
@@ -333,4 +335,52 @@ test("ehDivergente segue o mesmo critério do lado Python", () => {
   for (const [nome, comparacao, esperado] of casos) {
     expect([nome, ehDivergente(comparacao)]).toEqual([nome, esperado]);
   }
+});
+
+// --- Achado 7 (revisão final): comparação ilegível ------------------------
+// `JSON.parse(l.comparacao)` cru dentro do `.map` fazia UMA linha malformada
+// derrubar /api/tudo inteiro: a home sumia por causa de um campo de
+// diagnóstico. O lado Python (`relatorio_divergencias`) já separa as linhas
+// ruins e ainda as anuncia.
+
+test("separarDivergencias não deixa uma linha ruim calar as boas", () => {
+  const boa = JSON.stringify({
+    palavras_nova: 8661, palavras_antiga: 8356, palavras_unicas_antiga: 900, similaridade: 0.59,
+  });
+  const r = separarDivergencias([
+    { id: 1, titulo: "Lixo", comparacao: "{isto não é json" },
+    { id: 2, titulo: "Divergente", comparacao: boa },
+    { id: 3, titulo: "Nula", comparacao: "null" },
+    { id: 4, titulo: "Texto", comparacao: '"nem objeto"' },
+    { id: 5, titulo: "Igual", comparacao: JSON.stringify({
+      palavras_nova: 100, palavras_antiga: 100, palavras_unicas_antiga: 50, similaridade: 1,
+    }) },
+  ]);
+  expect(r.lista.map((l) => l.titulo)).toEqual(["Divergente"]);
+  expect(r.ilegiveis).toEqual(["Lixo", "Nula", "Texto"]);
+});
+
+test("uma comparação corrompida no banco não derruba /api/tudo", async () => {
+  db.run(`INSERT INTO itens (modulo_id,tipo,codigo,titulo,rel_path,posicao,bytes,comparacao)
+          VALUES (1,'video','09.01','Aula Corrompida','1-Curso/01-Mod/09.01-x.mp4',9,10,'{truncado')`);
+  db.run(`INSERT INTO itens (modulo_id,tipo,codigo,titulo,rel_path,posicao,bytes,comparacao)
+          VALUES (1,'video','09.02','Aula Divergente','1-Curso/01-Mod/09.02-x.mp4',10,10,
+                  '{"palavras_nova":8661,"palavras_antiga":8356,"palavras_unicas_antiga":900,"similaridade":0.59}')`);
+
+  const r = await pedir("/api/tudo?curso=c1", "chico");
+  expect(r.status).toBe(200);
+  const j = await r.json();
+  // A home inteira continua de pé — não só o cartão de divergências.
+  expect(j.arvore.length).toBe(1);
+  expect(j.divergencias.map((d: any) => d.titulo)).toEqual(["Aula Divergente"]);
+  expect(j.divergenciasIlegiveis).toEqual(["Aula Corrompida"]);
+});
+
+test("o convidado não recebe nem as divergências nem as ilegíveis", async () => {
+  const bruto = await (await pedir("/api/tudo?curso=c1", "procopio")).text();
+  // O título da aula continua na árvore, que é conteúdo de curso; o que não
+  // pode aparecer é o campo de diagnóstico.
+  expect(bruto).not.toContain("divergencia");
+  const proc = await (await pedir("/api/tudo?curso=c1", "procopio")).json();
+  expect(proc.divergenciasIlegiveis).toBeUndefined();
 });
