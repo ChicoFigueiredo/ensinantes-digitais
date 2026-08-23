@@ -145,6 +145,69 @@ export const CSS_CURSO = `
 `;
 
 /**
+ * CSS da cena — o vídeo mais os controles que desenhamos por cima dele.
+ *
+ * A cena existe por causa da tela cheia. O botão nativo põe em tela cheia o
+ * VÍDEO, e aí só o vídeo aparece: o HUD, as setas e a legenda são irmãos dele
+ * no DOM, não filhos, e ficam de fora. Por isso o botão nativo é escondido e o
+ * chip `⛶` põe a CENA inteira em tela cheia — em navegador que ignore o
+ * seletor, o `fullscreenchange` de player.ts conserta depois.
+ *
+ * O HUD fica visível o tempo todo, e não só ao mexer o mouse: metade do uso
+ * deste painel é em tablet, onde não existe "mexer o mouse" e um HUD que só
+ * aparece no hover simplesmente não existe.
+ */
+export const CSS_CENA = `
+.cena { position: relative; background: #000; }
+.cena:fullscreen { display: grid; place-items: center; width: 100vw; height: 100vh; }
+.cena:fullscreen video { max-height: 100vh; height: 100vh; object-fit: contain; }
+video::-webkit-media-controls-fullscreen-button { display: none; }
+
+.cena .hud {
+  position: absolute; top: 10px; right: 10px; max-width: calc(100% - 20px);
+  display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center;
+}
+/* --fundo com 82% de opacidade: a mesma cor do painel, deixando o vídeo
+   aparecer por baixo. Sem sombra — a borda de 1px já separa do vídeo. */
+.chip {
+  background: rgba(14, 16, 19, .82); color: var(--texto);
+  border: 1px solid var(--borda); border-radius: 8px;
+  padding: 4px 9px; font-size: 12.5px; line-height: 1.45;
+}
+.chip.on { border-color: var(--ambar); color: var(--ambar); }
+
+/* As setas ocupam a altura do vídeo menos a faixa dos controles nativos, e
+   só os botões recebem clique — o miolo continua sendo do <video>. */
+.cena .nav {
+  position: absolute; top: 0; bottom: 52px; left: 0; right: 0; pointer-events: none;
+  display: flex; align-items: center; justify-content: space-between; padding: 0 10px;
+}
+.cena .nav button {
+  pointer-events: auto; width: 44px; height: 66px; font-size: 26px; line-height: 1;
+  background: rgba(14, 16, 19, .82); border-color: var(--borda);
+}
+/* Primeira e última aula: a seta some, em vez de ficar clicável sem destino. */
+.cena .nav button:disabled { opacity: 0; pointer-events: none; }
+
+/* A legenda é desenhada AQUI, e não pelo navegador — ver o comentário de
+   \`aplicarFaixas\` em src/ui/player.ts para o motivo. O tamanho vem de
+   --tamleg, que mora na raiz do documento para continuar valendo em tela
+   cheia, e é em px para NÃO encolher junto com a janela. */
+.cena .legenda {
+  position: absolute; left: 0; right: 0; bottom: 58px; padding: 0 5%;
+  text-align: center; pointer-events: none;
+  font-size: var(--tamleg, 18px); line-height: 1.35;
+}
+.cena .legenda:empty { display: none; }
+/* Uma caixa só para a fala inteira, e não uma por linha: com fundo por linha
+   as emendas aparecem como listras entre elas. */
+.cena .legenda > span {
+  display: inline-block; background: rgba(14, 16, 19, .86); color: var(--texto);
+  border-radius: 6px; padding: .18em .5em;
+}
+`;
+
+/**
  * CSS da transcrição clicável e da anotação por aula, embaixo do vídeo.
  *
  * Largura limitada a 760px: texto corrido esticado na tela toda (o palco pode

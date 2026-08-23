@@ -1,4 +1,4 @@
-import { CSS, CSS_ADMIN, CSS_CURSO, CSS_MARKDOWN, CSS_TRANSCRICAO } from "./tema.ts";
+import { CSS, CSS_ADMIN, CSS_CENA, CSS_CURSO, CSS_MARKDOWN, CSS_TRANSCRICAO } from "./tema.ts";
 import { ADMIN_JS } from "./admin.ts";
 import { HOME_JS } from "./home.ts";
 import { PLAYER_JS } from "./player.ts";
@@ -19,7 +19,7 @@ export const PAGINA = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ensinantes Digitais</title>
-<style>${CSS}${CSS_CURSO}${CSS_TRANSCRICAO}${CSS_ADMIN}${CSS_MARKDOWN}</style>
+<style>${CSS}${CSS_CURSO}${CSS_CENA}${CSS_TRANSCRICAO}${CSS_ADMIN}${CSS_MARKDOWN}</style>
 </head>
 <body>
 <div id="app">carregando…</div>

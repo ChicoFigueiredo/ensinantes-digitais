@@ -34,6 +34,11 @@ function abrirCurso(slug: string, arvore: unknown[]): Promise<string> {
     getElementById: (id: string) => (id === "app" ? app : null),
     querySelector: () => solto(),
     querySelectorAll: () => [] as unknown[],
+    // `keydown` (atalho F) e `fullscreenchange` são registrados no documento
+    // uma vez, no carregamento do script — não por aula. Um documento de
+    // verdade tem isto; o de mentira precisa ter também.
+    addEventListener: () => {},
+    documentElement: { style: { setProperty: () => {} } },
   };
   const buscar = async () => ({
     json: async () => ({
