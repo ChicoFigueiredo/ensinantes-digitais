@@ -20,12 +20,12 @@ function cardsDeDono(d) {
     <h3>Acervo</h3>
     <div class="cartoes">
       <div class="cartao"><h2 class="num">\${gb(d.disco?.bytes)}</h2>
-        <div class="meta num">\${milhar(d.disco?.itens)} itens ·
+        <div class="meta num">\${milhar(d.disco?.itens)} \${palavraPara(d.disco?.itens, 'item', 'itens')} ·
           \${((d.disco?.segundos || 0) / 3600).toFixed(1).replace('.', ',')} h de vídeo</div></div>
 
       <div class="cartao"><h2 class="num">\${gb(recortes.bytes)}</h2>
-        <div class="meta num">\${milhar(recortes.arquivos)} recortes em
-          \${milhar(recortes.pastas)} pastas</div>
+        <div class="meta num">\${milhar(recortes.arquivos)} \${palavraPara(recortes.arquivos, 'recorte', 'recortes')} em
+          \${milhar(recortes.pastas)} \${palavraPara(recortes.pastas, 'pasta', 'pastas')}</div>
         <div class="meta">gere o script com "Refazer relatório"</div></div>
 
       <div class="cartao"><h2 class="num">\${milhar(fila.pronto || 0)} / \${milhar(
@@ -34,7 +34,7 @@ function cardsDeDono(d) {
 
       <a class="cartao \${div.length ? 'alerta' : ''}" href="#divergencias">
         <h2 class="num">\${div.length}</h2>
-        <div class="meta">transcrições divergentes</div>
+        <div class="meta">\${palavraPara(div.length, 'transcrição divergente', 'transcrições divergentes')}</div>
         <div class="meta">\${div.length ? 'vale abrir e comparar' : 'nada destoando'}</div></a>
     </div>
 

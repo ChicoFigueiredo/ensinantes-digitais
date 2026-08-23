@@ -12,6 +12,17 @@ from . import comparar, db
 from .transcriber import _carregar_modelo, processar
 
 
+def resumo(comparados: int, divergentes: int, caminho) -> str:
+    """A última linha da fila, com o plural certo.
+
+    `plural` vem de `comparar` — a mesma função que o relatório usa, e a mesma
+    que `comparar.main()` já usava. Com os números reais do acervo (72
+    comparados, 1 divergente) esta linha imprimia "1 divergentes".
+    """
+    return (f"{comparar.plural(comparados, 'vídeo comparado', 'vídeos comparados')} · "
+            f"{comparar.plural(divergentes, 'divergente', 'divergentes')} → {caminho}")
+
+
 def main() -> int:
     conn = db.conectar()
 
@@ -20,14 +31,14 @@ def main() -> int:
         "UPDATE itens SET transcricao_estado = 'pendente' WHERE transcricao_estado = 'rodando'").rowcount
     conn.commit()
     if n:
-        print(f"destravados {n} itens presos em 'rodando'")
+        print(f"destravados {comparar.plural(n, 'item preso', 'itens presos')} em 'rodando'")
 
     fila = db.pendentes(conn)
     if not fila:
         print("nada pendente")
         return 0
 
-    print(f"{len(fila)} vídeos na fila — carregando o modelo…")
+    print(f"{comparar.plural(len(fila), 'vídeo', 'vídeos')} na fila — carregando o modelo…")
     try:
         pipeline = _carregar_modelo()
     except ImportError as e:
@@ -40,14 +51,15 @@ def main() -> int:
         print(f"[{i}/{len(fila)}] {item['titulo']}", flush=True)
         processar(conn, item, pipeline)
 
-    print(f"fim: {len(fila)} vídeos em {(time.monotonic() - inicio) / 60:.1f} min")
+    print(f"fim: {comparar.plural(len(fila), 'vídeo', 'vídeos')} em "
+          f"{(time.monotonic() - inicio) / 60:.1f} min")
 
     # O relatório de divergências é escrito AQUI, e não à mão depois: cada
     # passada muda as comparações, e um relatório que só nasce quando alguém
     # lembra de rodá-lo não vale como aviso.
     caminho = comparar.escrever(conn)
     comparados, divergentes = comparar.contar(conn)
-    print(f"{comparados} comparados · {divergentes} divergentes → {caminho}")
+    print(resumo(comparados, divergentes, caminho))
     return 0
 
 

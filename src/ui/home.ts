@@ -17,8 +17,15 @@ function horas(seg) {
   return (seg / 3600).toFixed(1).replace('.', ',') + ' h';
 }
 
+/**
+ * A palavra certa para o número, SEM o número junto — para o cartão que já
+ * mostra a contagem grande em cima ("1" / "transcrição divergente"), ou que
+ * formata o número com \`milhar\`.
+ */
+const palavraPara = (n, singular, plural) => n === 1 ? singular : plural;
+
 /** "1 módulo" / "2 módulos" — plural que não erra no singular. */
-const plural = (n, singular, plural) => n + ' ' + (n === 1 ? singular : plural);
+const plural = (n, singular, plural) => n + ' ' + palavraPara(n, singular, plural);
 
 /** Quanto do curso o usuário já marcou como feito. */
 function progressoDoCurso(curso, progresso) {
