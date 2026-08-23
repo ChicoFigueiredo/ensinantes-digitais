@@ -1,0 +1,146 @@
+/**
+ * A home: um cartão por curso, mais "continuar de onde parou".
+ *
+ * O JS é vanilla e vive numa string. Não é preguiça: sem bundler o painel sobe
+ * em ~200 ms, e é isso que faz ele ser aberto no meio do estudo em vez de ser
+ * levantado.
+ */
+import { comoRelogio } from "../legenda.ts";
+
+/**
+ * O que o chip do tema mostra: o rótulo é o tema para onde o clique LEVA, não
+ * o que está valendo. Um chip escrito "Escuro" com a tela já escura faz a
+ * pessoa clicar só para descobrir o que ele queria dizer.
+ */
+export function anuncioDoTema(tema: string): { rotulo: string; titulo: string } {
+  const alvo = tema === "claro" ? "escuro" : "claro";
+  return {
+    rotulo: alvo === "claro" ? "Claro" : "Escuro",
+    titulo: `Mudar para o tema ${alvo}`,
+  };
+}
+
+/** O chip do cabeçalho, ao lado dos selos (c)/(p). */
+export function chipDeTema(tema: string): string {
+  const a = anuncioDoTema(tema);
+  return `<button class="tema" id="bTema" title="${a.titulo}">${a.rotulo}</button>`;
+}
+
+export const HOME_JS = `
+// As MESMAS funções deste arquivo, não cópias manuscritas delas.
+${anuncioDoTema.toString()}
+${chipDeTema.toString()}
+
+// A MESMA função de src/legenda.ts, não uma cópia manuscrita dela.
+${comoRelogio.toString()}
+const relogio = comoRelogio;
+
+function horas(seg) {
+  if (!seg) return '';
+  return (seg / 3600).toFixed(1).replace('.', ',') + ' h';
+}
+
+/**
+ * A palavra certa para o número, SEM o número junto — para o cartão que já
+ * mostra a contagem grande em cima ("1" / "transcrição divergente"), ou que
+ * formata o número com \`milhar\`.
+ */
+const palavraPara = (n, singular, plural) => n === 1 ? singular : plural;
+
+/** "1 módulo" / "2 módulos" — plural que não erra no singular. */
+const plural = (n, singular, plural) => n + ' ' + palavraPara(n, singular, plural);
+
+/** Quanto do curso o usuário já marcou como feito. */
+function progressoDoCurso(curso, progresso) {
+  let total = 0, feitos = 0;
+  for (const m of curso.modulos) for (const i of m.itens) {
+    total++;
+    if (progresso['i:' + i.id]?.feito) feitos++;
+  }
+  return { total, feitos, pct: total ? Math.round(feitos * 100 / total) : 0 };
+}
+
+function cartaoDeCurso(curso, progresso) {
+  const p = progressoDoCurso(curso, progresso);
+  const aulas = curso.modulos.reduce((s, m) => s + m.itens.length, 0);
+  const seg = curso.modulos.reduce((s, m) =>
+    s + m.itens.reduce((t, i) => t + (i.duracao || 0), 0), 0);
+  const vazio = curso.estado === 'esqueleto';
+
+  // Curso que não está no disco não ganha barra nem contagem: 0% de nada não é
+  // progresso, é um zero que parece atraso. O que ele é já está escrito na
+  // meta ("não baixado"), e o contorno tracejado do cartão diz o resto.
+  const avanco = vazio ? '' : \`
+    <div class="barra \${p.pct === 100 ? 'pronta' : ''}"><i style="width:\${p.pct}%"></i></div>
+    <div class="progresso num"><span>\${p.feitos} de \${p.total}</span><b>\${p.pct}%</b></div>\`;
+
+  return \`<a class="cartao \${vazio ? 'vazio' : ''}" href="/curso/\${curso.slug}">
+    <h2>\${esc(curso.titulo)}</h2>
+    <div class="meta num">\${plural(curso.modulos.length, 'módulo', 'módulos')} ·
+      \${vazio ? 'não baixado' : plural(aulas, 'item', 'itens')}\${seg ? ' · ' + horas(seg) : ''}</div>
+    \${avanco}
+  </a>\`;
+}
+
+const esc = s => (s ?? '').replace(/[&<>"]/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/**
+ * Acha o curso e o item correspondentes a \`d.retomar\` (\`{ chave, segundos }\`,
+ * chave no formato "i:<id>"), percorrendo a árvore já carregada.
+ *
+ * O servidor manda a chave mais recente já ordenada por \`updated_at\` — o
+ * cliente só precisa achar a que ela aponta, não decidir qual é a mais
+ * recente. Ver \`ultimoAberto\` em src/db.ts.
+ */
+function acharRetomar(arvore, retomar) {
+  if (!retomar) return null;
+  const id = Number(retomar.chave.slice(2));
+  for (const c of arvore) for (const m of c.modulos) for (const i of m.itens) {
+    if (i.id === id) return { curso: c, item: i, segundos: retomar.segundos };
+  }
+  return null;
+}
+
+/** O clique do chip do tema. \`trocarTema\` mora com as outras prefs, em player.ts. */
+function ligarChipDeTema() {
+  const b = document.getElementById('bTema');
+  if (b) b.onclick = trocarTema;
+}
+
+function selos(ind) {
+  const meu = '<span class="selo eu" title="você">' + ind.eu + '</span>';
+  const outro = ind.outro ? '<span class="selo outro" title="procópio está online">' + ind.outro + '</span>' : '';
+  return outro + meu;
+}
+
+async function pintarHome() {
+  const d = await (await fetch('/api/tudo')).json();
+  const retomar = acharRetomar(d.arvore, d.retomar);
+
+  // ANTES de montar o cabeçalho: é daqui que sai o tema que o chip anuncia, e
+  // é aqui que a escolha feita no outro aparelho chega a este. Sem esta linha
+  // a home nunca aplicava nada do que o servidor guarda — dava para trocar o
+  // tema no tablet e voltar ao PC sem que ele soubesse.
+  aplicarPrefsDoServidor(d.prefs);
+
+  document.getElementById('app').innerHTML = \`
+    <header class="topo">
+      <h1>Ensinantes Digitais</h1><div class="espaco"></div>
+      \${chipDeTema(temaAtual())}\${selos(d.indicadores)}
+    </header>
+    <main>
+      <div class="cartoes">\${d.arvore.map(c => cartaoDeCurso(c, d.progresso)).join('')}</div>
+      \${retomar ? \`<div class="retomar">
+        <h3>Continuar de onde parou</h3>
+        <a class="cartao" href="/curso/\${retomar.curso.slug}#i\${retomar.item.id}">
+          <h2>\${esc(retomar.item.titulo)}</h2>
+          <div class="meta num">\${esc(retomar.curso.titulo)} · em \${relogio(retomar.segundos)}</div>
+        </a></div>\` : ''}
+      \${cardsDeDono(d)}
+    </main>\`;
+
+  ligarBotoesDeTarefa();
+  ligarChipDeTema();
+}
+`;

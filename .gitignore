@@ -1,0 +1,14 @@
+node_modules/
+.venv/
+__pycache__/
+acervo
+*.db
+*.db-shm
+*.db-wal
+.env
+relatorios/
+scripts/apagar-recortes.sh
+_prompts.ceo.md
+
+# Senhas geradas na instalação do acesso remoto. Nunca versionar.
+infra/remote/senhas.txt
