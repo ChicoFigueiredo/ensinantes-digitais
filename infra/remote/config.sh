@@ -15,20 +15,27 @@ DOMINIO=ensinantesdigitais.chicofigueiredo.com.br
 # que a dele parou de funcionar.
 DOMINIOS_ALIAS=(ensinantes-digitais.chicofigueiredo.com.br)
 
-# Acesso administrativo ao droplet — usado só na instalação (passos 2 e 3).
-# `ssh.chico-figueiredo.com.br` é a MESMA máquina, por outro nome.
-DROPLET=root@ssh.lojapopcorn.com.br
+# Acesso administrativo ao servidor — usado só na instalação (passos 2 e 3).
+#
+# NÃO é `ssh.lojapopcorn.com.br`, que estava aqui antes por herança do
+# focus-scrap. Medido: lojapopcorn resolve para 167.99.225.233, e os dois nomes
+# do painel resolvem para 191.252.219.183, que é este. São máquinas
+# diferentes — apontar para a errada faria o certbot falhar na validação, e o
+# erro não diria "servidor errado".
+DROPLET=root@ssh.chico-figueiredo.com.br
 
 # Para onde o túnel disca no dia a dia. Mesmo servidor, usuário sem shell.
-TUNEL_HOST=ssh.lojapopcorn.com.br
+TUNEL_HOST=ssh.chico-figueiredo.com.br
 TUNEL_USER=tunel-ensinantes
 
 # A PORTA. Vale dos dois lados do túnel e TEM de bater com ED_PAINEL_PORTA
 # do .env.
 #
-# É 17789, e não 17788, porque o túnel do focus-scrap já usa a 17788 nesta
-# máquina e neste droplet. Repetir derruba um dos dois de forma intermitente:
-# o sintoma é 502 esporádico, que parece PC suspenso e não é.
+# É 17789, e não 17788, porque o túnel do focus-scrap já usa a 17788 — e isto
+# foi MEDIDO neste servidor, não suposto: `ss -lntp` mostra o sshd escutando na
+# 17788, e `focus.chicofigueiredo.com.br` está entre os sites do nginx daqui.
+# Repetir a porta derruba um dos dois de forma intermitente, e o sintoma é 502
+# esporádico, que parece PC suspenso e não é.
 PORTA=17789
 
 # Dois usuários, duas senhas. O passo 3 imprime cada uma UMA vez.

@@ -84,7 +84,7 @@ OpenSSH 7.9+. No DNS: o nome já resolvendo para o IP do droplet (o passo 3
 confere e recusa seguir se não estiver). Aqui: systemd no WSL.
 
 **Quem roda isto é o dono do projeto** — os passos 2, 3 e 4 abaixo exigem acesso
-SSH ao droplet (`root@ssh.lojapopcorn.com.br`) e o passo 3 pede para inventar
+SSH ao droplet (`root@ssh.chico-figueiredo.com.br`) e o passo 3 pede para inventar
 e anotar as duas senhas na hora. Nenhum desses scripts embute senha ou
 credencial: tudo é gerado ou pedido no momento em que roda.
 
@@ -218,8 +218,8 @@ pronto e não instalado (as duas linhas para ligar estão no cabeçalho dele).
 ## Trocar uma senha
 
 ```bash
-ssh -t root@ssh.lojapopcorn.com.br htpasswd -B /etc/nginx/ensinantes.htpasswd chico
-ssh -t root@ssh.lojapopcorn.com.br htpasswd -B /etc/nginx/ensinantes.htpasswd procopio
+ssh -t root@ssh.chico-figueiredo.com.br htpasswd -B /etc/nginx/ensinantes.htpasswd chico
+ssh -t root@ssh.chico-figueiredo.com.br htpasswd -B /etc/nginx/ensinantes.htpasswd procopio
 ```
 
 O `-t` não é enfeite: o `htpasswd` PERGUNTA a senha, e `ssh` com comando não
@@ -252,5 +252,5 @@ privilegiado do lado do app (`USUARIOS` em `src/config.ts`, `quemE` em
 O certbot deixou a renovação agendada no próprio droplet. Conferir:
 
 ```bash
-ssh root@ssh.lojapopcorn.com.br 'certbot certificates | grep -A2 ensinantesdigitais'
+ssh -t root@ssh.chico-figueiredo.com.br 'certbot certificates | grep -A2 ensinantesdigitais'
 ```
