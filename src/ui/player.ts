@@ -159,11 +159,30 @@ ${rotuloVelocidade.toString()}
 ${hudDoVideo.toString()}
 ${linhasDaLegenda.toString()}
 
-function enfileirar(op) {
+// Declaração, e não \`const\`: tudo aqui vive num \`<script>\` só, e função
+// declarada sobe para o topo do escopo. Uma seta em \`const\` ficaria na zona
+// morta para quem a chamasse antes desta linha.
+function enfileirar(op) { enfileirarVarias([op]); }
+
+/**
+ * N operações de uma vez: UMA leitura da fila, UMA escrita e UM escoamento.
+ *
+ * "Marcar tudo" de um módulo de doze aulas são doze operações — as MESMAS
+ * \`{tipo:'progresso'}\` que o botão do palco enfileira, porque a fila e o
+ * \`/api/sync\` não conhecem outra. O que muda é o caminho até lá: doze
+ * \`enfileirar\` seguidos seriam doze \`JSON.parse\` + \`JSON.stringify\` da fila
+ * inteira e doze chamadas de \`escoar\` — e, pior, cada uma podendo escapar
+ * para a rede num lote diferente. Aqui as doze saem no MESMO POST, e
+ * \`aplicarSync\` já as aplica numa transação só.
+ *
+ * Lote vazio não vai para a fila: "marcar tudo" num módulo em que nada muda
+ * não é escrita nenhuma.
+ */
+function enfileirarVarias(ops) {
+  if (!ops.length) return;
   const f = JSON.parse(localStorage.getItem(FILA) || '[]');
-  f.push(op);
+  for (const op of ops) { f.push(op); aplicarLocal(op); }
   localStorage.setItem(FILA, JSON.stringify(f));
-  aplicarLocal(op);
   escoar();
 }
 
@@ -212,9 +231,21 @@ async function escoar() {
 setInterval(escoar, 8000);
 addEventListener('online', escoar);
 
-function marcar(id, valor) {
+/**
+ * A operação que "deixa assim" o visto de UMA aula.
+ *
+ * Os \`segundos\` vêm do que já está gravado, e não zerados: marcar a aula como
+ * vista pela caixa da árvore não pode apagar o ponto em que a pessoa parou o
+ * vídeo. É a mesma op que a caixa da árvore, o "marcar tudo" do módulo e o
+ * botão do palco enfileiram — um caminho de gravação só.
+ */
+function opDeProgresso(id, valor) {
   const p = dados.progresso[CHAVE(id)] || { segundos: 0, feito: false };
-  enfileirar({ tipo: 'progresso', chave: CHAVE(id), segundos: p.segundos, feito: valor });
+  return { tipo: 'progresso', chave: CHAVE(id), segundos: p.segundos, feito: valor };
+}
+
+function marcar(id, valor) {
+  enfileirar(opDeProgresso(id, valor));
   pintarArvore();
 }
 
@@ -502,13 +533,18 @@ function pintarPalco() {
   palco.innerHTML = midia + \`
     <div class="cabeca"><h2>\${esc(item.titulo)}</h2></div>
     <div class="ferramentas">
-      <button id="bFeito">\${p.feito ? '✓ visto' : 'marcar como visto'}</button>
+      <button id="bFeito" data-item="\${item.id}">\${p.feito ? '✓ visto' : 'marcar como visto'}</button>
       \${dados.permissoes.verCaminhos && item.relPath
         ? '<button id="bRevelar">mostrar na pasta</button>' : ''}
     </div>
     <div id="transcricao"></div>\`;
 
-  document.getElementById('bFeito').onclick = meu(() => { marcar(item.id, !feito(item.id)); pintarPalco(); });
+  // Só \`marcar\`: quem reescreve o rótulo do botão é \`refletirFeito\`, chamada
+  // no fim de \`pintarArvore\`. O \`pintarPalco()\` que estava aqui refazia a cena
+  // inteira só para trocar duas palavras — e refazer a cena PARA o vídeo e o
+  // recarrega no meio da aula, que é o oposto do que "já vi isto" deveria
+  // custar.
+  document.getElementById('bFeito').onclick = meu(() => marcar(item.id, !feito(item.id)));
 
   const v = document.getElementById('v');
   if (v) {

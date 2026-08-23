@@ -263,6 +263,33 @@ export const CSS_CURSO = `
 .arvore .aula.feita .marca { color: var(--verde); }
 .arvore .aula .dur { margin-left: auto; font-size: 12px; }
 
+/*
+ * A CAIXA de seleção: a de cada aula e a de "marcar tudo" no cabeçalho do
+ * módulo.
+ *
+ * É o controle NATIVO, e isso é escolha, não preguiça. \`accent-color\` a pinta
+ * com o token de destaque — cor nossa, nenhuma literal —, o \`color-scheme\`
+ * declarado nos dois temas lá em cima já faz o navegador desenhar o resto dela
+ * em cor de papel ou de noite, e o TRAÇO do estado parcial (\`indeterminate\`)
+ * vem pronto. Uma caixa desenhada à mão custaria um pseudo-elemento e três
+ * seletores para chegar ao mesmo lugar, e perderia justamente o traço, que é o
+ * estado mais difícil de anunciar sem ele.
+ */
+.arvore .caixa {
+  flex: none; align-self: center; margin: 0;
+  width: 14px; height: 14px; cursor: pointer;
+  accent-color: var(--destaque);
+}
+/* Um degrau maior no cabeçalho: aquela vale por um módulo inteiro. */
+.arvore .modulo > summary .caixa { width: 15px; height: 15px; }
+
+/* O contador "✓ 3/12", encostado na direita do cabeçalho. \`num\` (tabular, lá
+   em cima) é o que impede o número de dançar a cada aula marcada. */
+.arvore .modulo > summary .conta {
+  margin-left: auto; flex: none; white-space: nowrap;
+  color: var(--secundario); font-size: 12px; font-weight: 500;
+}
+
 .palco { overflow-y: auto; padding: 0 0 60px; }
 .palco video { width: 100%; background: #000; display: block; aspect-ratio: 16/9; }
 .palco .cabeca { padding: 16px 24px 8px; }

@@ -66,6 +66,12 @@ function criarDom() {
     let html = "";
     const el: Elemento = {
       id, textContent: "", title: "", disabled: false, onclick: null,
+      // Todo elemento de verdade tem um `dataset`, mesmo sem nenhum `data-*`
+      // escrito nele — e `refletirFeito` (curso.ts) lê o `data-item` do botão
+      // do palco para não escrever o estado de um item no botão de outro. Este
+      // DOM registra os nós pelo id e não guarda atributo nenhum; quem exercita
+      // o rótulo do botão de verdade é tests/arvore.test.ts.
+      dataset: {} as Record<string, string>,
       classes,
       classList: {
         toggle: (c: string, ligado: boolean) => { if (ligado) classes.add(c); else classes.delete(c); },

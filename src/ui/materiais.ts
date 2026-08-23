@@ -31,13 +31,14 @@ async function pintarMarkdown(geracao) {
 
   palco.innerHTML =
     '<div class="cabeca"><h2>' + esc(item.titulo) + '</h2></div>' +
-    '<div class="ferramentas"><button id="bFeito">' +
+    '<div class="ferramentas"><button id="bFeito" data-item="' + item.id + '">' +
       (p.feito ? '✓ lido' : 'marcar como lido') + '</button></div>' +
     '<article class="md">' + d.html + '</article>';
 
-  document.getElementById('bFeito').onclick = () => {
-    marcar(item.id, !feito(item.id));
-    pintarPalco();
-  };
+  // Como no palco de vídeo: só \`marcar\`, porque \`refletirFeito\` (chamada no
+  // fim de \`pintarArvore\`) já reescreve o rótulo. Aqui o \`pintarPalco()\` que
+  // estava neste lugar custava ainda mais caro — ele refaz o \`fetch\` de
+  // /api/markdown e a pessoa perde a posição de leitura do material.
+  document.getElementById('bFeito').onclick = () => marcar(item.id, !feito(item.id));
 }
 `;
