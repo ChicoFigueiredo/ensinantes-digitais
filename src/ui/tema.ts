@@ -91,9 +91,15 @@ export const CSS = `
   --elevada: #ebe2d1;
   --borda: #dcd0b9;
   --texto: #2f2a23;
-  --secundario: #6f6759;
-  --destaque: #9a5f1f;
-  --verde: #4d7a51;
+  /* Escurecidos até passarem em AA sobre a superfície ELEVADA (#ebe2d1), e não
+     só sobre o fundo. É onde a conferência anterior errou: o selo (c)/(p) do
+     cabeçalho fica sobre a elevada, que é mais escura que o fundo, e ali
+     --destaque dava 4,05:1 e --secundario 4,34:1 — reprovados para texto.
+     Medindo pelo pior fundo, os três passam em todos: elevada 4,5+ · fundo
+     5,1+ · superfície 5,7+. */
+  --secundario: #6c6457;
+  --destaque: #8f581d;
+  --verde: #456d49;
   color-scheme: light;
 }
 

@@ -102,6 +102,21 @@ test("texto e secundário passam em AA sobre o cartão, e não só sobre o fundo
   }
 });
 
+// A régua vale sobre TODA superfície onde a cor vira texto, e não só sobre o
+// fundo e o cartão. Foi exatamente aqui que passou um defeito: o selo (c)/(p)
+// do cabeçalho tem `background: var(--elevada)`, que é mais escura que o fundo,
+// e no tema claro `--destaque` dava 4,05:1 e `--secundario` 4,34:1 ali —
+// reprovados — enquanto a conferência contra o fundo dizia que estava tudo bem.
+// Medir pelo PIOR fundo é o que impede a próxima paleta de repetir isso.
+test("texto, secundário e destaque passam em AA sobre a ELEVADA, o pior fundo", () => {
+  for (const [nome, t] of [["escuro", ESCURO], ["claro", CLARO]] as const) {
+    for (const token of ["--texto", "--secundario", "--destaque"] as const) {
+      const r = contraste(t[token]!, t["--elevada"]!);
+      expect({ tema: nome, token, passa: r >= 4.5 }).toEqual({ tema: nome, token, passa: true });
+    }
+  }
+});
+
 // O verde fica FORA da régua de 4,5:1, e o motivo é escrito para ninguém
 // "consertar" isto depois: ele nunca é prosa. É a barra cheia e o ✓ ao lado do
 // título da aula — indicador, não texto —, e para indicador a régua da WCAG é
