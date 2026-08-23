@@ -72,7 +72,7 @@ export const CSS = `
 /*
  * O ocre claro: os MESMOS tokens, em cor de papel.
  *
- * Três valores saíram do ponto de partida, e os três por medida de contraste
+ * Dois valores saíram do ponto de partida, e os dois por medida de contraste
  * (WCAG AA, 4.5:1 para texto normal), não por gosto:
  *
  *   --secundario  #7b7264 → #6f6759   4,13:1 reprovava sobre o fundo; agora 4,87:1.
@@ -396,8 +396,10 @@ export const CSS_TRANSCRICAO = `
 
 /**
  * CSS dos cards de dono (Tarefa 16): disco, fila, recortes e divergências.
- * Âmbar sinaliza alerta — o mesmo tom usado no resto do painel para "olhe
- * aqui", sem introduzir uma cor nova só para isto.
+ * O DESTAQUE sinaliza alerta — o mesmo token usado no resto do painel para
+ * "olhe aqui", sem introduzir uma cor nova só para isto. Não diz "âmbar" de
+ * propósito: no tema claro esse token guarda um ocre, e comentário que fixa o
+ * nome de uma cor envelhece na primeira troca de tema.
  */
 export const CSS_ADMIN = `
 .dono { margin-top: 44px; }
