@@ -77,6 +77,42 @@ ED_PAINEL_PORTA=17789
 Mudar a porta: troque nos **dois** lugares (`.env` e `config.sh`) e rode
 `./3-droplet-nginx.sh` e `./4-servico-local.sh` de novo.
 
+## Depois de formatar a máquina de casa
+
+**Não é "refazer do zero".** O que morre na formatação é a metade local: a
+chave privada em `~/.ssh/ensinantes_tunel` e as duas unidades do systemd. O
+droplet não sabe que houve formatação — nginx, certificado, `htpasswd` e o
+usuário `tunel-ensinantes` continuam de pé. Rodar o passo 3 nessa hora seria
+mexer em nginx e certificado que estão intactos, sem motivo.
+
+São os passos **1, 2 e 4** — pulando o 3:
+
+```bash
+cd infra/remote
+./1-chave-local.sh      # chave nova; a antiga morreu com o disco
+./2-droplet-usuario.sh  # troca a chave velha órfã do droplet pela nova
+./4-servico-local.sh    # o túnel de volta como serviço
+cp ensinantes-painel.service ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now ensinantes-painel
+./verificar.sh
+```
+
+O passo 2 é obrigatório e é o que se esquece: sem ele o `authorized_keys` do
+droplet ainda guarda a chave pública velha, cuja metade privada não existe mais
+em lugar nenhum — o túnel tenta, apanha `Permission denied (publickey)` e o
+`Restart=always` transforma isso num laço silencioso.
+
+Confira também **onde o `bun` foi parar**. O `ExecStart` do
+`ensinantes-painel.service` aponta para um caminho absoluto, e uma reinstalação
+pode mudá-lo (foi o que houve em 07/09/2026: de `~/.bun/bin/bun` para o do
+mise). O sintoma é cruel de ler: `systemctl status` diz `activating
+(auto-restart)`, que parece um serviço subindo, e o journal é que conta a
+verdade — `exec: ...: not found`, `status=127`.
+
+E confira o `linger`: com ele desligado, túnel e painel só sobem quando alguém
+abre um terminal do WSL. `loginctl show-user $USER -p Linger` responde; ligar é
+`sudo loginctl enable-linger $USER`.
+
 ## Refazer do zero
 
 Pré-requisitos — no droplet: nginx, certbot com plugin nginx, `apache2-utils`,
@@ -120,7 +156,7 @@ dig +short ensinantesdigitais.chicofigueiredo.com.br
 | `4-servico-local.sh` | escreve e liga o `ensinantes-tunel.service` | não |
 | `verificar.sh` | diagnóstico elo por elo (as conferências autenticadas pedem as senhas) | sim, se autenticado |
 | `ensinantes-nginx.conf` | cópia do que fica no droplet, para leitura | — (referência) |
-| `ensinantes-painel.service` | **opcional, não instalado** — painel subindo com o WSL | não |
+| `ensinantes-painel.service` | **instalado** — painel subindo com o WSL | não |
 
 ## As decisões que valem explicar
 
@@ -211,9 +247,9 @@ systemctl --user restart ensinantes-tunel
 | **procópio vendo o que não devia** | o `X-Painel-Usuario` não está chegando ou está sendo repassado do cliente — rode a conferência do header forjado |
 | **tudo lento** | é o upload da internet de casa: o vídeo sai do disco em tempo real |
 
-**PC desligado ou suspenso = 502.** Não tem contorno: o acervo está aqui. Para
-o painel ao menos subir junto com o WSL, `ensinantes-painel.service` está
-pronto e não instalado (as duas linhas para ligar estão no cabeçalho dele).
+**PC desligado ou suspenso = 502.** Não tem contorno: o acervo está aqui. O
+painel sobe junto com o WSL pelo `ensinantes-painel.service`, instalado — o que
+sobra de 502 é PC realmente fora do ar, não terminal fechado.
 
 ## Trocar uma senha
 
