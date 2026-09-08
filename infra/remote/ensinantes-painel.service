@@ -13,17 +13,32 @@
 #   cp infra/remote/ensinantes-painel.service ~/.config/systemd/user/
 #   systemctl --user daemon-reload && systemctl --user enable --now ensinantes-painel
 #
-# A porta não aparece aqui de propósito: o bun lê o .env do WorkingDirectory, e
-# lá está ED_PAINEL_PORTA=17789 — o mesmo número que o túnel usa. Um lugar só
-# para a porta é o que impede os dois lados de saírem de sincronia.
+# A porta não aparece aqui de propósito: o bun lê o .env do diretório do
+# projeto, e lá está ED_PAINEL_PORTA=17789 — o mesmo número que o túnel usa.
+# Um lugar só para a porta é o que impede os dois lados de saírem de sincronia.
+#
+# Sem WorkingDirectory= de propósito: isso faria o systemd amarrar o serviço a
+# /mnt/d via RequiresMountsFor, e se o disco ainda não tiver montado no boot o
+# serviço falha e desiste antes mesmo de tentar. Em vez disso o ExecStart
+# espera o diretório aparecer, checando a cada 1 min, sem limite de tentativas
+# — e StartLimitIntervalSec=0 garante que o Restart=always nunca desiste por
+# excesso de falhas em sequência.
+#
+# O caminho do bun é o do mise, e não `~/.bun/bin/bun`: depois que a máquina foi
+# formatada (07/09/2026) o bun passou a ser instalado pelo mise, e o serviço
+# morria em laço com `exec: not found` (status=127) — o Restart=always mascara
+# isso como "activating (auto-restart)", que de longe parece um serviço subindo,
+# e não um que nunca sobe. O `focus-painel.service` desta mesma máquina já usa
+# este caminho. Trocar de versão do bun no mise mexe no alvo do symlink
+# `latest`, não neste arquivo.
 
 [Unit]
 Description=Painel do ensinantes-digitais
-After=network-online.target
+After=network-online.target mnt-d.mount
+StartLimitIntervalSec=0
 
 [Service]
-WorkingDirectory=/mnt/d/Chico/ensinantes-digitais
-ExecStart=/home/chico/.bun/bin/bun run src/cli.ts painel
+ExecStart=/bin/sh -c 'DIR=/mnt/d/Chico/ensinantes-digitais; while [ ! -d "$DIR/.git" ]; do echo "[ensinantes-painel] /mnt/d ainda não montou, tentando de novo em 1 min..."; sleep 60; done; cd "$DIR" && exec /home/chico/.local/share/mise/installs/bun/latest/bin/bun run src/cli.ts painel'
 Restart=always
 RestartSec=10
 
