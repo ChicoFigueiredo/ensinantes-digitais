@@ -1,14 +1,14 @@
 /**
  * Quem está do outro lado, e o que essa pessoa pode.
  *
- * A autenticação é do nginx: o htpasswd tem duas entradas e o site repassa o
+ * A autenticação é do Caddy: o arquivo de senhas tem duas entradas e o Site repassa o
  * usuário autenticado em `X-Painel-Usuario`. O app não tem tela de login e não
  * guarda senha — ele só lê o resultado.
  *
  * Sem header, o usuário é `chico`: é o caso do acesso local em 127.0.0.1, onde
  * a máquina já é dele. Mas header PRESENTE e desconhecido cai em `procopio`, o
  * menos privilegiado — porque um header estranho significa configuração errada
- * do nginx, e nesse caso errar para menos poder é a única direção segura.
+ * do Caddy, e nesse caso errar para menos poder é a única direção segura.
  */
 import type { Database } from "bun:sqlite";
 
@@ -49,9 +49,9 @@ export function permissoesDe(usuario: Usuario): Permissoes {
 /**
  * Rotas que rodam processo na máquina de casa.
  *
- * Estão em 403 no nginx E conferidas aqui. As duas tranças existem porque
- * fazem coisas diferentes: o nginx protege o acesso remoto, e esta lista
- * protege contra o nginx mal configurado.
+ * Estão em 403 no Caddy E conferidas aqui. As duas tranças existem porque
+ * fazem coisas diferentes: o Caddy protege o acesso remoto, e esta lista
+ * protege contra o Caddy mal configurado.
  */
 export const ROTAS_ADMIN = [
   "/api/run", "/api/requeue", "/api/revelar", "/api/abrir", "/api/limpeza",

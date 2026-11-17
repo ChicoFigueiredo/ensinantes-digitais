@@ -15,5 +15,5 @@ else
 fi
 
 echo
-echo "pública (vai para o droplet no passo 2):"
+echo "pública (vai para a VPS no passo 2):"
 cat "$CHAVE.pub"

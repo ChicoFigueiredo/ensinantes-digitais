@@ -1,0 +1,42 @@
+# Painel do ensinantes-digitais, que roda em casa e chega por túnel SSH reverso
+# (usuário 'tunel-ensinantes', porta 17789). Senha em /etc/caddy/segredos/ensinantes.auth
+# (dois usuários); o nome de quem entrou segue para o painel em X-Painel-Usuario.
+#
+# Instalação (feita por infra/remote/3-vps-caddy.sh):
+#   install -m 644 ensinantesdigitais.chicofigueiredo.com.br.caddy /etc/caddy/sites/
+#   caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile && systemctl reload caddy
+#
+# TLS: o Caddy emite o certificado sozinho (HTTP-01), um por nome — o canônico e o
+# apelido. A porta 17789 tem de bater com PORTA em infra/remote/config.sh, e o regex de
+# rotas bloqueadas com ROTAS_ADMIN em src/usuario.ts (menos /api/sync, que fica liberada).
+ensinantesdigitais.chicofigueiredo.com.br {
+	import log
+
+	request_body {
+		max_size 16MiB
+	}
+
+	route {
+		# Rotas que disparam trabalho: de fora, não. 403 antes da senha, como no nginx.
+		@bloqueadas path_regexp ^/api/(run|requeue|revelar|abrir|limpeza)$
+		respond @bloqueadas 403
+
+		import senha ensinantes "Ensinantes Digitais"
+
+		reverse_proxy 127.0.0.1:17789 {
+			header_up X-Real-IP {remote_host}
+			# 'header_up' substitui: o cliente não consegue forjar este cabeçalho.
+			header_up X-Painel-Usuario {http.auth.user.id}
+			flush_interval -1
+			transport http {
+				read_timeout 3600s
+			}
+		}
+	}
+}
+
+# Apelido com hífen → nome canônico.
+ensinantes-digitais.chicofigueiredo.com.br {
+	import log
+	redir https://ensinantesdigitais.chicofigueiredo.com.br{uri} 301
+}

@@ -152,24 +152,24 @@ estudar. O `scan` as reconhece, mantém fora do catálogo e as lista em
 
 ## Os dois usuários
 
-Não há tela de login e o app não guarda senha. Quem autentica é o nginx do VPS,
+Não há tela de login e o app não guarda senha. Quem autentica é o Caddy da VPS,
 que repassa o usuário no header `X-Painel-Usuario`.
 
 | Quem | Como chega | Vê |
 |---|---|---|
 | `chico` (dono) | Sem header — o acesso local em `127.0.0.1` já é a máquina dele | Tudo: conteúdo, espaço em disco, tamanho dos arquivos, caminhos absolutos, fila de transcrição, eventos, divergências, botões que rodam processo |
-| `procopio` (convidado) | Header `X-Painel-Usuario: procopio`, posto pelo nginx | Só o conteúdo: cursos, aulas, vídeo, legenda, o próprio progresso e as próprias notas |
+| `procopio` (convidado) | Header `X-Painel-Usuario: procopio`, posto pelo Caddy | Só o conteúdo: cursos, aulas, vídeo, legenda, o próprio progresso e as próprias notas |
 
 Duas regras que parecem detalhe e não são:
 
 - Header **ausente** vira `chico`; header **presente e desconhecido** vira
-  `procopio`, o menos privilegiado. Um header estranho significa nginx mal
+  `procopio`, o menos privilegiado. Um header estranho significa Caddy mal
   configurado, e nesse caso errar para menos poder é a única direção segura.
 - O filtro é no servidor, não no CSS: a resposta de `/api/tudo` para o
   procópio simplesmente **não contém** as chaves `disco`, `fila`, `eventos`,
   `recortes`, os bytes nem os caminhos. Nem o "ver código-fonte" os entrega.
   As rotas que rodam processo (`/api/run`, `/api/requeue`, `/api/revelar`,
-  `/api/abrir`, `/api/limpeza`) devolvem 403 para ele — no nginx **e** aqui.
+  `/api/abrir`, `/api/limpeza`) devolvem 403 para ele — no Caddy **e** aqui.
 
 O progresso e as notas são por usuário: cada um marca o que viu sem mexer no do
 outro. No canto superior direito, o chico vê acender um `(p)` quando o procópio
@@ -178,18 +178,22 @@ está online; o contrário não acontece, de propósito.
 ### Trocar a senha de um deles
 
 ```bash
-ssh -t root@ssh.chico-figueiredo.com.br htpasswd -B /etc/nginx/ensinantes.htpasswd chico
-ssh -t root@ssh.chico-figueiredo.com.br htpasswd -B /etc/nginx/ensinantes.htpasswd procopio
+ssh -t root@ssh.chico-figueiredo.com.br 'read -rsp "nova senha de chico: " s; echo
+  h=$(printf "%s\n" "$s" | htpasswd -niB chico); h=${h/:/ }
+  sed -i "s|^chico .*|$h|" /etc/caddy/segredos/ensinantes.auth; unset s h; systemctl reload caddy'
 ```
 
-O `-t` **não é enfeite**: o `htpasswd` pergunta a senha, e `ssh` com comando não
-aloca terminal. Sem ele o prompt não aparece direito e a troca falha de um jeito
-confuso. Com ele, a senha é pedida duas vezes e nunca passa pela linha de
-comando — não fica no histórico do shell nem visível na lista de processos.
+Troque `chico` por `procopio` (nos três lugares) para o outro usuário. O `-t`
+**não é enfeite**: sem terminal o `read` não consegue pedir a senha. Ela é lida
+sem eco e entra no `htpasswd` por stdin (`-i`): nunca passa pela linha de
+comando, então não fica no histórico do shell nem na lista de processos. O
+arquivo `/etc/caddy/segredos/ensinantes.auth` guarda uma linha `usuario
+hash-bcrypt` por usuário; o `sed` troca **só** a linha do usuário indicado.
 
-Cada comando mexe **só** no usuário indicado. Não precisa recarregar o nginx: o
-arquivo é lido a cada requisição, então a senha nova vale na seguinte. Confira
-sem abrir o navegador — `curl` pergunta a senha e não a deixa no histórico:
+O Caddy lê o arquivo ao carregar a configuração, então **precisa do
+`systemctl reload caddy`** (já está no comando acima) para a senha nova valer.
+Confira sem abrir o navegador — `curl` pergunta a senha e não a deixa no
+histórico:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' -u chico \
@@ -198,12 +202,11 @@ curl -s -o /dev/null -w '%{http_code}\n' -u chico \
 
 Dois avisos que custam caro:
 
-- **Nunca use `-c`** fora da instalação. Ele **recria** o arquivo e apaga o
-  outro usuário junto — trocar a senha do chico com `-c` deixa o procópio sem
-  acesso, sem aviso nenhum. Não é folclore; conferido num arquivo descartável:
-  duas entradas viram uma só, em silêncio, e o `htpasswd` sai com 0.
-- **Nunca use `-b`** (senha na linha de comando): ela fica no histórico do
-  shell e visível na lista de processos do servidor enquanto roda.
+- **Nunca sobrescreva o arquivo inteiro** (`>`) ao trocar uma senha: ele guarda
+  os dois usuários, e trocar a do chico assim deixa o procópio sem acesso, sem
+  aviso nenhum. O `sed` acima mexe numa linha só.
+- **Nunca use `htpasswd -b`** (senha na linha de comando): ela fica no histórico
+  do shell e visível na lista de processos do servidor enquanto roda.
 
 As senhas geradas na instalação ficaram em `infra/remote/senhas.txt` (permissão
 600, fora do git). Guarde no seu gerenciador e **apague o arquivo** — no
@@ -215,8 +218,8 @@ A porta é a **17789**, dos dois lados do túnel, e tem de bater com `PORTA` no
 `infra/remote/config.sh`. Divergir as duas produz 502 intermitente, que parece
 problema de rede e não é.
 
-Os passos do dono para montar (ou refazer) o acesso remoto — chave, droplet,
-nginx com os dois logins, serviço local, e o roteiro de conferência de fora —
+Os passos do dono para montar (ou refazer) o acesso remoto — chave, VPS,
+Caddy com os dois logins, serviço local, e o roteiro de conferência de fora —
 estão em **[`infra/remote/README.md`](infra/remote/README.md)**. Não estão
 repetidos aqui de propósito: um roteiro de infraestrutura em dois lugares vira
 dois roteiros diferentes.
@@ -227,8 +230,8 @@ dois roteiros diferentes.
 |---|---|
 | 502 de fora | PC suspenso, painel parado, ou painel que pulou de porta |
 | 401 que não passa | senha errada — veja [Trocar a senha](#trocar-a-senha-de-um-deles) |
-| Procópio vendo card de disco | `proxy_set_header X-Painel-Usuario` faltando no nginx |
-| Vídeo não deixa arrastar | `Range` não está chegando — `proxy_buffering off` no nginx |
+| Procópio vendo card de disco | `header_up X-Painel-Usuario` faltando no `.caddy` do Site |
+| Vídeo não deixa arrastar | `Range` não está chegando — `flush_interval -1` no `.caddy` do Site |
 | Legenda não aparece | o `<track>` não lê SRT; confira se `/api/legenda` devolve VTT |
 | Scan demorando minutos | o prune não está pegando — veja `ehRecorte` |
 | Transcrição lenta demais | caiu para CPU — `python -c "import torch;print(torch.cuda.is_available())"` |
