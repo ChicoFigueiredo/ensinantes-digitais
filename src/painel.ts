@@ -247,7 +247,7 @@ export async function montarResposta(db: Database, req: Request): Promise<Respon
 
   tocarSessao(db, usuario);
 
-  // Primeira tranca, antes de qualquer despacho. A segunda é o 403 do nginx.
+  // Primeira tranca, antes de qualquer despacho. A segunda é o 403 do Caddy.
   if (ehRotaAdmin(rota) && !pode.admin) {
     return Response.json({ ok: false, msg: "só o chico" }, { status: 403 });
   }
@@ -295,7 +295,7 @@ export async function montarResposta(db: Database, req: Request): Promise<Respon
   // localStorage e só tira da fila o que este endpoint confirmar — é o que faz
   // uma piscada do túnel deixar de engolir o que a pessoa marcou.
   //
-  // NUNCA bloquear no nginx: sem ela o painel não fica somente-leitura, fica
+  // NUNCA bloquear no Caddy: sem ela o painel não fica somente-leitura, fica
   // quebrado, com a fila enchendo para sempre.
   if (rota === "/api/sync" && req.method === "POST") {
     const corpo = (await req.json().catch(() => null)) as { ops?: unknown[] } | null;

@@ -1,19 +1,24 @@
 # Acesso remoto ao painel
 
 > **Nada disto foi executado.** Os scripts estão escritos e conferidos por
-> sintaxe, mas nenhum comando saiu daqui para o droplet: os passos exigem as
+> sintaxe, mas nenhum comando saiu daqui para a VPS: os passos exigem as
 > duas senhas e o acesso administrativo, que são do dono. Rodar é com você.
 
 **Dois nomes chegam no mesmo painel.** O canônico é
 `ensinantesdigitais.chicofigueiredo.com.br` (sem hífen); o apelido
 `ensinantes-digitais.chicofigueiredo.com.br` (com hífen) responde com 301 para
-ele. Os DOIS precisam de registro de DNS apontando para o droplet **antes** do
-passo 3 — o Let's Encrypt valida cada nome separadamente, e um apelido sem DNS
-não gera aviso: derruba a emissão inteira e o site fica sem certificado nenhum.
+ele. Os DOIS precisam de registro de DNS apontando para a VPS **antes** do
+passo 3 — o Let's Encrypt valida cada nome separadamente (HTTP-01, um
+certificado por nome), e um apelido sem DNS fica sem HTTPS.
 
-O servidor `ssh.chico-figueiredo.com.br` e o `ssh.lojapopcorn.com.br` são a
-mesma máquina. Os scripts usam o segundo, que é o que o túnel do focus-scrap já
-usa — e é por isso que a porta aqui é a 17789 e não a 17788.
+Quem serve o HTTPS é o **Caddy** da VPS (a Borda). A configuração deste Site mora
+aqui no repositório, em `infra/caddy/ensinantesdigitais.chicofigueiredo.com.br.caddy`:
+o passo 3 a copia para `/etc/caddy/sites/`, valida e recarrega o Caddy. O
+Caddyfile base, com os snippets que ela importa (`log`, `senha`), fica no
+repositório de infraestrutura da VPS (ADR 0003).
+
+O túnel do focus-scrap também discando nesta VPS é o motivo de a porta aqui ser
+a 17789 e não a 17788.
 
 Como **https://ensinantesdigitais.chicofigueiredo.com.br** existe, e como
 refazer isso do zero.
@@ -24,9 +29,9 @@ no tablet. O que existe lá fora é um cano com senha na ponta — e, diferente 
 focus-scrap, com **duas** senhas, uma para cada pessoa que pode entrar.
 
 ```
-tablet ──HTTPS──▶ nginx no droplet ──▶ 127.0.0.1:17789 (ponta do túnel)
-                  (TLS + htpasswd           ▲
-                   com 2 usuários)          │ túnel SSH reverso
+tablet ──HTTPS──▶ Caddy na VPS ──▶ 127.0.0.1:17789 (ponta do túnel)
+                  (TLS + basic auth        ▲
+                   com 2 usuários)         │ túnel SSH reverso
                         WSL ── ssh -R ───────┘   (ensinantes-tunel.service)
                          │
                          └─ painel em 127.0.0.1:17789 ── acervo em /mnt/e
@@ -41,30 +46,30 @@ operadora.
 `chico` é o dono e vê tudo. `procopio` é o professor convidado: não vê espaço
 em disco, botões de processamento, fila/eventos/erros nem caminhos absolutos
 do sistema de arquivos — essa distinção é feita pelo painel (`src/usuario.ts`),
-não pelo nginx. O nginx só faz duas coisas, e as duas são obrigatórias:
+não pelo Caddy. O Caddy só faz duas coisas, e as duas são obrigatórias:
 
-1. Autentica cada usuário contra o `htpasswd` (`/etc/nginx/ensinantes.htpasswd`,
-   duas entradas) e repassa quem autenticou no cabeçalho
-   `X-Painel-Usuario: $remote_user`.
-2. Como esse `proxy_set_header` **sobrescreve** qualquer `X-Painel-Usuario` que
-   o navegador tenha mandado, ninguém consegue se declarar `chico` só
-   forjando o cabeçalho na mão — o painel confia nesse header porque é o
-   nginx quem o torna confiável.
+1. Autentica cada usuário contra `/etc/caddy/segredos/ensinantes.auth` (uma
+   linha `usuario hash-bcrypt` por usuário, duas entradas) e repassa quem
+   autenticou no cabeçalho `X-Painel-Usuario: {http.auth.user.id}`.
+2. Como esse `header_up` **substitui** qualquer `X-Painel-Usuario` que o
+   navegador tenha mandado, ninguém consegue se declarar `chico` só forjando o
+   cabeçalho na mão — o painel confia nesse header porque é o Caddy quem o
+   torna confiável.
 
-Sem essa linha no nginx, todo acesso remoto chegaria como `chico` (o painel
+Sem essa linha no `.caddy`, todo acesso remoto chegaria como `chico` (o painel
 assume esse usuário quando o header não vem, caso do acesso local em
 `127.0.0.1`) — e o Procópio veria tudo que o Chico vê.
 
 ## A porta é fixa, e não é a 17788
 
 **Não basta dar `bun run painel` em qualquer porta.** O túnel é um par de
-portas decidido de antemão: `ssh -R 17789:127.0.0.1:17789`. O nginx do droplet
+portas decidido de antemão: `ssh -R 17789:127.0.0.1:17789`. O Caddy da VPS
 faz proxy para a `17789` **daquela ponta**, e a ponta despeja na `17789`
 **desta**. Painel em qualquer outra porta = o túnel entrega numa porta vazia =
 **502 no tablet**.
 
 É **17789**, e não **17788**, porque a 17788 já é do túnel do focus-scrap
-nesta mesma máquina e no mesmo droplet. Repetir a porta derruba um dos dois
+nesta mesma máquina e na mesma VPS. Repetir a porta derruba um dos dois
 serviços de forma intermitente — o sintoma é 502 esporádico, que parece PC
 suspenso ou painel caído, e não é.
 
@@ -74,31 +79,33 @@ Por isso a porta está fixada no `.env`:
 ED_PAINEL_PORTA=17789
 ```
 
-Mudar a porta: troque nos **dois** lugares (`.env` e `config.sh`) e rode
-`./3-droplet-nginx.sh` e `./4-servico-local.sh` de novo.
+Mudar a porta: troque em **três** lugares (`.env`, `config.sh` e o
+`reverse_proxy` do `.caddy` em `infra/caddy/`) e rode `./3-vps-caddy.sh` e
+`./4-servico-local.sh` de novo. O passo 3 recusa seguir se `config.sh` e `.caddy`
+discordarem.
 
 ## Depois de formatar a máquina de casa
 
 **Não é "refazer do zero".** O que morre na formatação é a metade local: a
 chave privada em `~/.ssh/ensinantes_tunel` e as duas unidades do systemd. O
-droplet não sabe que houve formatação — nginx, certificado, `htpasswd` e o
+VPS não sabe que houve formatação — o Site no Caddy, o certificado, as senhas e o
 usuário `tunel-ensinantes` continuam de pé. Rodar o passo 3 nessa hora seria
-mexer em nginx e certificado que estão intactos, sem motivo.
+mexer no Site e nas senhas que estão intactos, sem motivo.
 
 São os passos **1, 2 e 4** — pulando o 3:
 
 ```bash
 cd infra/remote
 ./1-chave-local.sh      # chave nova; a antiga morreu com o disco
-./2-droplet-usuario.sh  # troca a chave velha órfã do droplet pela nova
+./2-vps-usuario.sh      # troca a chave velha órfã da VPS pela nova
 ./4-servico-local.sh    # o túnel de volta como serviço
 cp ensinantes-painel.service ~/.config/systemd/user/
 systemctl --user daemon-reload && systemctl --user enable --now ensinantes-painel
 ./verificar.sh
 ```
 
-O passo 2 é obrigatório e é o que se esquece: sem ele o `authorized_keys` do
-droplet ainda guarda a chave pública velha, cuja metade privada não existe mais
+O passo 2 é obrigatório e é o que se esquece: sem ele o `authorized_keys` da
+VPS ainda guarda a chave pública velha, cuja metade privada não existe mais
 em lugar nenhum — o túnel tenta, apanha `Permission denied (publickey)` e o
 `Restart=always` transforma isso num laço silencioso.
 
@@ -115,13 +122,14 @@ abre um terminal do WSL. `loginctl show-user $USER -p Linger` responde; ligar é
 
 ## Refazer do zero
 
-Pré-requisitos — no droplet: nginx, certbot com plugin nginx, `apache2-utils`,
-OpenSSH 7.9+. No DNS: o nome já resolvendo para o IP do droplet (o passo 3
-confere e recusa seguir se não estiver). Aqui: systemd no WSL.
+Pré-requisitos — na VPS: Caddy instalado e rodando (Borda; usuário `caddy`,
+`/etc/caddy/sites/` importada pelo Caddyfile base), `apache2-utils`, OpenSSH
+7.9+. No DNS: o nome e o apelido já resolvendo para o IP da VPS (o passo 3
+confere e recusa seguir se não estiverem). Aqui: systemd no WSL.
 
 **Quem roda isto é o dono do projeto** — os passos 2, 3 e 4 abaixo exigem acesso
-SSH ao droplet (`root@ssh.chico-figueiredo.com.br`) e o passo 3 pede para inventar
-e anotar as duas senhas na hora. Nenhum desses scripts embute senha ou
+SSH à VPS (`root@ssh.chico-figueiredo.com.br`) e o passo 3 gera as duas senhas
+e as grava num arquivo local para você guardar. Nenhum desses scripts embute senha ou
 credencial: tudo é gerado ou pedido no momento em que roda.
 
 Ajuste `config.sh` se necessário (domínio, servidor, porta, os dois usuários)
@@ -130,17 +138,24 @@ e rode na ordem:
 ```bash
 cd infra/remote
 ./1-chave-local.sh      # aqui — gera o par de chaves exclusivo do túnel
-./2-droplet-usuario.sh  # NO DROPLET — cria 'tunel-ensinantes', sem shell, chave trancada
-./3-droplet-nginx.sh    # NO DROPLET — site, as DUAS senhas, certificado; imprime as senhas uma vez
+./2-vps-usuario.sh      # NA VPS — cria 'tunel-ensinantes', sem shell, chave trancada
+./3-vps-caddy.sh        # NA VPS — Site no Caddy (valida e recarrega) e as DUAS senhas; o certificado o Caddy emite
 ./4-servico-local.sh    # aqui — o túnel como serviço do systemd
 ./verificar.sh          # confere a corrente inteira
 ```
 
-Todos são idempotentes: rodar de novo não estraga o que já existe. O passo 3
-imprime cada senha uma única vez — depois dela só resta o bcrypt no droplet.
-**Anote as duas na hora**, uma para `chico` e uma para `procopio`.
+Todos são idempotentes: rodar de novo não estraga o que já existe. O passo 3 não
+troca as senhas se `/etc/caddy/segredos/ensinantes.auth` já existe
+(`RENOVAR_SENHAS=1 ./3-vps-caddy.sh` gera senhas novas para os dois). Ao gerar,
+grava cada senha em `senhas.txt` (modo 600, fora do git) — depois dela só resta
+o bcrypt na VPS. **Guarde as duas no gerenciador de senhas e apague o arquivo**,
+uma para `chico` e uma para `procopio`.
 
-Antes do passo 3, o DNS já tem de resolver para o IP do droplet — o próprio
+Se o `caddy validate` reprovar o `.caddy`, o passo 3 restaura o arquivo anterior
+e **não** recarrega o Caddy: um Site quebrado em `/etc/caddy/sites/` derrubaria
+o próximo reload de todos os outros.
+
+Antes do passo 3, o DNS já tem de resolver para o IP da VPS — o próprio
 Let's Encrypt confirma o domínio batendo na porta 80:
 
 ```bash
@@ -149,22 +164,24 @@ dig +short ensinantesdigitais.chicofigueiredo.com.br
 
 | Arquivo | O quê | Exige acesso ao VPS? |
 |---|---|---|
-| `config.sh` | domínio, servidor, porta, os dois usuários — a única coisa a editar | não |
+| `config.sh` | domínio, VPS, porta, os dois usuários | não |
 | `1-chave-local.sh` | gera `~/.ssh/ensinantes_tunel` | não |
-| `2-droplet-usuario.sh` | cria o usuário `tunel-ensinantes` com a chave restrita | sim |
-| `3-droplet-nginx.sh` | site do nginx, `htpasswd` com os dois usuários, certbot — pede/gera as duas senhas | sim |
+| `2-vps-usuario.sh` | cria o usuário `tunel-ensinantes` com a chave restrita | sim |
+| `3-vps-caddy.sh` | copia o `.caddy`, valida e recarrega o Caddy; cria `/etc/caddy/segredos/ensinantes.auth` com os dois usuários — gera as duas senhas | sim |
 | `4-servico-local.sh` | escreve e liga o `ensinantes-tunel.service` | não |
 | `verificar.sh` | diagnóstico elo por elo (as conferências autenticadas pedem as senhas) | sim, se autenticado |
-| `ensinantes-nginx.conf` | cópia do que fica no droplet, para leitura | — (referência) |
+| `../caddy/ensinantesdigitais.chicofigueiredo.com.br.caddy` | **a fonte** do Site: é o que o passo 3 instala em `/etc/caddy/sites/` (inclui o apelido com 301) | — |
 | `ensinantes-painel.service` | **instalado** — painel subindo com o WSL | não |
 
 ## As decisões que valem explicar
 
-**Por que não Caddy nem Docker.** O droplet já serve outros sites com nginx +
-certbot nas portas 80/443. Caddy só poderia entrar *atrás* do nginx, fazendo o
-que o nginx já faz. Os scripts são aditivos: criam um arquivo novo em
-`sites-available`, passam por `nginx -t` e recarregam. Não leem nem editam
-configuração de outro site — nem a do focus-scrap, que já mora lá.
+**Por que Caddy e a configuração aqui no repositório.** A Borda da VPS é o
+Caddy no host (ADR 0003 do repositório de infraestrutura): ele emite e renova o
+certificado sozinho (HTTP-01), então não há certbot, `dhparam` nem
+redirecionamento 80→443 para manter. A configuração do Site mora junto do app,
+em `infra/caddy/`, e o passo 3 é aditivo: copia só o arquivo deste Site para
+`/etc/caddy/sites/`, valida a configuração inteira e recarrega. Não lê nem edita
+o arquivo de outro Site — nem o do focus-scrap, que também mora lá.
 
 **Por que um usuário sem shell.** A chave do túnel fica guardada num serviço
 que reconecta sozinho a noite toda. Ela é um par novo (não a chave de root do
@@ -177,14 +194,14 @@ alcança é um painel que ainda pede senha.
 transcrição, marcar como visto e anotar — mas nada de ver quanto espaço o
 acervo ocupa, disparar transcrição ou abrir arquivo no Explorer da máquina de
 casa. Um único login misturaria as duas coisas. Com dois usuários e o
-cabeçalho `X-Painel-Usuario` repassado pelo nginx, o painel decide a
+cabeçalho `X-Painel-Usuario` repassado pelo Caddy, o painel decide a
 visibilidade sozinho — ver `permissoesDe()` em `src/usuario.ts`.
 
 **Por que só leitura de processo, de fora.** O painel dispara transcrição,
 abre arquivo no Explorer e limpa recortes. Nada disso faz sentido a partir do
 tablet, e tudo isso é poder sobre a máquina de casa. Estas respondem 403 no
-nginx (a lista canônica é `ROTAS_ADMIN` em `src/usuario.ts`; `ROTAS_BLOQUEADAS`
-em `config.sh` tem de bater com ela):
+Caddy (a lista canônica é `ROTAS_ADMIN` em `src/usuario.ts`; o regex
+`@bloqueadas` do `.caddy` tem de bater com ela):
 
 ```
 /api/run  /api/requeue  /api/revelar  /api/abrir  /api/limpeza
@@ -222,7 +239,7 @@ curl -s -u procopio:SENHA -H 'X-Painel-Usuario: chico' \
 ```
 
 Esperado na última: `"usuario":"procopio"`. Se vier `chico`, o
-`proxy_set_header` não está sobrescrevendo e o controle de acesso remoto é
+`header_up` não está sobrescrevendo e o controle de acesso remoto é
 decorativo — pare e conserte antes de passar a senha ao Procópio.
 
 `SENHA_CHICO='...' SENHA_PROCOPIO='...' ./verificar.sh` roda essas mesmas
@@ -242,8 +259,8 @@ systemctl --user restart ensinantes-tunel
 | Sintoma | Quase sempre é |
 |---|---|
 | **502** | túnel de pé, painel não. PC suspenso, painel parado, ou painel que pulou de porta |
-| **401 que não passa** | senha errada — `htpasswd -B /etc/nginx/ensinantes.htpasswd <usuario>` troca |
-| **503 / conexão recusada** | nginx fora do ar no droplet |
+| **401 que não passa** | senha errada — veja "Trocar uma senha" abaixo; lembre do `systemctl reload caddy` |
+| **503 / conexão recusada** | Caddy fora do ar na VPS (`systemctl status caddy`) |
 | **procópio vendo o que não devia** | o `X-Painel-Usuario` não está chegando ou está sendo repassado do cliente — rode a conferência do header forjado |
 | **tudo lento** | é o upload da internet de casa: o vídeo sai do disco em tempo real |
 
@@ -254,18 +271,19 @@ sobra de 502 é PC realmente fora do ar, não terminal fechado.
 ## Trocar uma senha
 
 ```bash
-ssh -t root@ssh.chico-figueiredo.com.br htpasswd -B /etc/nginx/ensinantes.htpasswd chico
-ssh -t root@ssh.chico-figueiredo.com.br htpasswd -B /etc/nginx/ensinantes.htpasswd procopio
+ssh -t root@ssh.chico-figueiredo.com.br 'read -rsp "nova senha de chico: " s; echo
+  h=$(printf "%s\n" "$s" | htpasswd -niB chico); h=${h/:/ }
+  sed -i "s|^chico .*|$h|" /etc/caddy/segredos/ensinantes.auth; unset s h; systemctl reload caddy'
 ```
 
-O `-t` não é enfeite: o `htpasswd` PERGUNTA a senha, e `ssh` com comando não
-aloca terminal. Sem ele o prompt não aparece direito e a troca falha de um
-jeito confuso. Com `-t`, ele pede duas vezes e nada da senha passa pela linha
-de comando — ou seja, não fica no histórico do shell nem na lista de processos.
+Para o `procopio`, troque o nome nos três lugares. O `-t` não é enfeite: sem
+terminal o `read` não consegue pedir a senha. Ela é lida sem eco e entra no
+`htpasswd` por stdin (`-i`) — nada da senha passa pela linha de comando, ou
+seja, não fica no histórico do shell nem na lista de processos.
 
-Cada comando troca só a senha do usuário indicado; o outro fica intacto. Não
-precisa recarregar o nginx: o arquivo é lido a cada requisição, então a senha
-nova vale na requisição seguinte.
+Cada comando troca só a linha do usuário indicado; o outro fica intacto. O
+Caddy lê o arquivo ao carregar a configuração, então **precisa do
+`systemctl reload caddy`** (já no comando) para a senha nova valer.
 
 Conferir que funcionou, sem abrir o navegador:
 
@@ -274,19 +292,21 @@ Conferir que funcionou, sem abrir o navegador:
 curl -s -o /dev/null -w '%{http_code}\n' -u chico https://ensinantesdigitais.chicofigueiredo.com.br/
 ```
 
-**Acrescentar um terceiro usuário** é o mesmo comando com outro nome — o
-`htpasswd` cria a entrada se ela não existir. Mas o painel só conhece `chico` e
-`procopio`: qualquer outro nome autentica no nginx e cai como o MENOS
+**Acrescentar um terceiro usuário** é acrescentar uma linha `usuario hash` ao
+arquivo (o `sed` acima só troca linhas que já existem). Mas o painel só conhece
+`chico` e `procopio`: qualquer outro nome autentica no Caddy e cai como o MENOS
 privilegiado do lado do app (`USUARIOS` em `src/config.ts`, `quemE` em
 `src/usuario.ts`). Para um terceiro usuário de verdade, os dois lados mudam.
 
-**Nunca** use `-b` (senha na linha de comando) nem `-c` fora da instalação: o
-`-c` RECRIA o arquivo e apaga o outro usuário junto.
+**Nunca** sobrescreva o arquivo inteiro (`>`) nem use `htpasswd -b` (senha na
+linha de comando): o primeiro apaga o outro usuário junto, o segundo deixa a
+senha no histórico e na lista de processos.
 
 ## Certificado
 
-O certbot deixou a renovação agendada no próprio droplet. Conferir:
+O Caddy emite o certificado de cada nome sozinho (HTTP-01) na primeira visita e
+renova antes de vencer; não há nada agendado aqui. Conferir:
 
 ```bash
-ssh -t root@ssh.chico-figueiredo.com.br 'certbot certificates | grep -A2 ensinantesdigitais'
+ssh -t root@ssh.chico-figueiredo.com.br 'journalctl -u caddy --no-pager | grep -i "ensinantes" | tail'
 ```

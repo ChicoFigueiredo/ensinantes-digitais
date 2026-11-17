@@ -314,7 +314,7 @@ Vídeos sem legenda anterior (159 dos 232) não têm com o que comparar;
 
 ### Rotas
 
-| Rota | O quê | nginx |
+| Rota | O quê | Caddy |
 |---|---|---|
 | `GET /` | home: cards dos 3 cursos + Materiais | livre |
 | `GET /curso/<slug>` | árvore lateral + player | livre |
@@ -336,17 +336,17 @@ sempre. É o mesmo aprendizado registrado no focus-scrap.
 
 ### Duas tranças, não uma
 
-O 403 do nginx protege o acesso remoto. Mas `painel.ts` **também** verifica:
+O 403 do Caddy protege o acesso remoto. Mas `painel.ts` **também** verifica:
 rota administrativa com `usuario !== 'chico'` responde 403 antes de qualquer
 efeito. Esconder card no CSS é cosmético e não conta como controle de acesso.
 
 ## Identidade e visibilidade
 
-O nginx repassa `X-Painel-Usuario $remote_user` — o usuário autenticado pelo
-htpasswd. O painel lê o header, valida contra `['chico', 'procopio']`, e
+O Caddy repassa `X-Painel-Usuario {http.auth.user.id}` — o usuário autenticado
+pelo basic auth. O painel lê o header, valida contra `['chico', 'procopio']`, e
 **sem header assume `chico`**, que é o caso do acesso local em `127.0.0.1`.
 
-Não existe tela de login no app. A autenticação é do nginx; o app só lê o
+Não existe tela de login no app. A autenticação é do Caddy; o app só lê o
 resultado.
 
 | | chico | procópio |
@@ -394,24 +394,25 @@ Responsivo: abaixo de 900px a árvore vira gaveta e o player ocupa a tela.
 
 ## Acesso remoto
 
-`infra/remote/` copiado do focus-scrap, com três mudanças no `config.sh`:
+`infra/remote/` copiado do focus-scrap, com três mudanças no `config.sh` (e a Borda
+virou Caddy: o Site mora em `infra/caddy/`):
 
 ```bash
 DOMINIO=ensinantesdigitais.chicofigueiredo.com.br
 PORTA=17789                       # ≠ 17788 do focus
-USUARIOS_PAINEL=(chico procopio)  # duas entradas no htpasswd
+USUARIOS_PAINEL=(chico procopio)  # duas linhas em ensinantes.auth
 ```
 
 **A porta diferente não é detalhe.** Os dois túneis rodam na mesma máquina e
-discam para o mesmo droplet. Repetir a 17788 derruba um dos dois de forma
+discam para o mesma VPS. Repetir a 17788 derruba um dos dois de forma
 intermitente e difícil de diagnosticar — o sintoma é 502 esporádico, que parece
 PC suspenso.
 
-Rotas bloqueadas no nginx:
-`ROTAS_BLOQUEADAS='run|requeue|revelar|abrir|limpeza'`
+Rotas bloqueadas no Caddy (regex `@bloqueadas` do `.caddy`):
+`run|requeue|revelar|abrir|limpeza`
 
-O passo 3 (`3-droplet-nginx.sh`) cria as duas entradas do htpasswd e imprime
-cada senha **uma única vez**. A do procópio é repassada a ele por fora.
+O passo 3 (`3-vps-caddy.sh`) cria as duas linhas de `/etc/caddy/segredos/ensinantes.auth`
+e grava cada senha **uma única vez** em `senhas.txt`. A do procópio é repassada a ele por fora.
 
 Nada do acervo sobe para servidor nenhum: o vídeo sai do disco de casa no
 instante em que alguém aperta play. PC desligado = 502, sem contorno.
@@ -483,4 +484,4 @@ Python:
 | Whisper produzir transcrição pior que a existente em algum vídeo | comparação automática + relatório de divergências + backup em `_transcricoes.antigas/` |
 | Colisão de porta com o túnel do focus-scrap | porta 17789 fixada nos dois lados, e verificada por `verificar.sh` |
 | Nomes de pasta fora dos padrões observados | itens sem código não são descartados: ordenam por nome, depois dos numerados |
-| Ocultar cards do procópio virar só CSS | verificação server-side em `painel.ts`, independente do nginx |
+| Ocultar cards do procópio virar só CSS | verificação server-side em `painel.ts`, independente do Caddy |

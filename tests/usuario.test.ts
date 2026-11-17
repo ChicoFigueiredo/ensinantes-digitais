@@ -10,7 +10,7 @@ test("sem header o usuário é o chico — é o acesso local", () => {
   expect(quemE(comHeader())).toBe("chico");
 });
 
-test("o header do nginx identifica cada um", () => {
+test("o header do Caddy identifica cada um", () => {
   expect(quemE(comHeader("chico"))).toBe("chico");
   expect(quemE(comHeader("procopio"))).toBe("procopio");
 });

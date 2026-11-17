@@ -1,5 +1,7 @@
 # Painel Ensinantes Digitais — Implementation Plan
 
+> **Nota (migração para Caddy):** este plano é o registro histórico da implementação e foi escrito quando a Borda da VPS era nginx + certbot. Hoje é Caddy: onde se lê nginx, `htpasswd`, certbot ou `3-droplet-nginx.sh`, leia o Site em `infra/caddy/ensinantesdigitais.chicofigueiredo.com.br.caddy`, o arquivo `/etc/caddy/segredos/ensinantes.auth` e `infra/remote/3-vps-caddy.sh`. O estado atual está em `infra/remote/README.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Um painel web local que navega os três cursos do combo Ensinantes Digitais direto do disco, com vídeo, transcrição, PDFs e progresso separado por usuário, acessível de fora por túnel SSH.

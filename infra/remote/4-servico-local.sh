@@ -13,12 +13,12 @@ mkdir -p "$(dirname "$UNIDADE")"
 
 cat > "$UNIDADE" <<EOF
 [Unit]
-Description=Túnel SSH reverso do painel ensinantes-digitais para o droplet
+Description=Túnel SSH reverso do painel ensinantes-digitais para a VPS
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-# -N: nenhum shell do outro lado, só a porta. A chave é restrita no droplet a
+# -N: nenhum shell do outro lado, só a porta. A chave é restrita na VPS a
 #     exatamente este encaminhamento — não serve para mais nada.
 # ExitOnForwardFailure: se a $PORTA de lá já estiver ocupada, morre em vez de
 #     ficar de pé fingindo que funciona; o Restart tenta de novo em seguida.
